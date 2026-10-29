@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <title>拾物 · 3D 预览</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: #FBF8F1;
+      background-image: radial-gradient(120% 85% at 50% 18%, #FFFFFF 0%, #F7F2E7 52%, #EDE5D5 100%);
+      -webkit-tap-highlight-color: transparent;
+    }
+    model-viewer {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      min-height: 100vh;
+      background: transparent;
+      --poster-color: transparent;
+      --progress-bar-color: transparent;
+      --progress-mask: transparent;
+    }
+    #hint {
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 10px;
+      text-align: center;
+      font: 11px/1.4 -apple-system, "PingFang SC", "Noto Sans SC", sans-serif;
+      letter-spacing: .06em;
+      color: rgba(22, 32, 27, .34);
+      pointer-events: none;
+      transition: opacity .5s ease;
+    }
+  </style>
+  <script type="module" src="./model-viewer.min.js"></script>
+</head>
+<body>
+  <model-viewer
+    id="mv"
+    camera-controls
+    touch-action="none"
+    auto-rotate
+    auto-rotate-delay="900"
+    rotation-per-second="14deg"
+    interaction-prompt="none"
+    environment-image="neutral"
+    shadow-intensity="0.85"
+    shadow-softness="0.9"
+    exposure="0.92"
+    tone-mapping="aces"
+    camera-orbit="28deg 74deg 112%"
+    min-camera-orbit="auto 15deg auto"
+    max-camera-orbit="auto 95deg auto"
+  ></model-viewer>
+  <div id="hint">拖动旋转 · 双指缩放</div>
+  <div id="dbg" style="display:none;position:fixed;left:8px;top:8px;right:8px;font:11px/1.5 monospace;color:#123;background:rgba(255,255,255,.85);padding:6px 8px;border-radius:8px;white-space:pre-wrap"></div>
+  <script>
+    (function () {
+      var params = new URLSearchParams(location.search);
+      var mv = document.getElementById('mv');
+      var dbg = document.getElementById('dbg');
+      var log = [];
+      function trace(line) {
+        log.push(line);
+        if (dbg) dbg.textContent = log.join('\n');
+      }
+      if (params.get('debug') === '1') dbg.style.display = 'block';
+
+      var canvas = document.createElement('canvas');
+      var gl = null;
+      try { gl = canvas.getContext('webgl2') || canvas.getContext('webgl'); } catch (e) {}
+      trace('webgl=' + (gl ? 'ok' : 'FAIL'));
+      trace('ua=' + navigator.userAgent.slice(0, 60));
+      trace('inner=' + window.innerWidth + 'x' + window.innerHeight + ' dpr=' + window.devicePixelRatio + ' css=' + getComputedStyle(document.body).backgroundColor);
+      setTimeout(function () {
+        trace('mv=' + mv.clientWidth + 'x' + mv.clientHeight + ' canvas=' + (mv.shadowRoot && mv.shadowRoot.querySelector('canvas') ? mv.shadowRoot.querySelector('canvas').width + 'x' + mv.shadowRoot.querySelector('canvas').height : 'n/a'));
+      }, 1500);
+
+      mv.addEventListener('error', function (event) {
+        try {
+          var detail = event && event.detail ? (event.detail.type || event.detail) : 'load-error';
+          trace('model error: ' + String(detail));
+          if (window.ShiwuBridge && window.ShiwuBridge.onModelError) {
+            window.ShiwuBridge.onModelError(String(detail));
+          }
+        } catch (e) {}
+      });
+
+      var model = params.get('model');
+      trace('src=' + model);
+
+      // 某些 Android WebView 里百分比/vh 高度会算成 0，这里直接按视口像素锁定尺寸。
+      function fit() {
+        var w = window.innerWidth || 1;
+        var h = window.innerHeight || 1;
+        mv.style.position = 'fixed';
+        mv.style.left = '0';
+        mv.style.top = '0';
+        mv.style.width = w + 'px';
+        mv.style.height = h + 'px';
+        document.documentElement.style.height = h + 'px';
+        document.body.style.height = h + 'px';
+      }
+      fit();
+      window.addEventListener('resize', fit);
+      setTimeout(fit, 300);
+      setTimeout(fit, 1200);
+
+      if (model) {
+        mv.setAttribute('src', model);
+      }
+
+      if (params.get('rotate') === '0') {
+        mv.removeAttribute('auto-rotate');
+      }
+
+      var hint = document.getElementById('hint');
+      var hide = function () { hint.style.opacity = '0'; };
+      mv.addEventListener('load', function () {
+        trace('model loaded');
+        try { if (window.ShiwuBridge) ShiwuBridge.onModelLoaded(); } catch (e) {}
+        setTimeout(hide, 1800);
+      });
+      setTimeout(hide, 6000);
+      mv.addEventListener('pointerdown', hide, { once: true });
+    })();
+  </script>
+</body>
+</html>
