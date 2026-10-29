@@ -22,9 +22,11 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -33,7 +35,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -57,12 +58,11 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -74,16 +74,14 @@ import com.shiwu.scan3d.ui.theme.Amber
 import com.shiwu.scan3d.ui.theme.AmberDim
 import com.shiwu.scan3d.ui.theme.Brass
 import com.shiwu.scan3d.ui.theme.BrassDark
-import com.shiwu.scan3d.ui.theme.BrassLight
 import com.shiwu.scan3d.ui.theme.Cream
 import com.shiwu.scan3d.ui.theme.Deck
 import com.shiwu.scan3d.ui.theme.DeckEdge
 import com.shiwu.scan3d.ui.theme.Glass
 import com.shiwu.scan3d.ui.theme.Ink
-import com.shiwu.scan3d.ui.theme.Plate
-import com.shiwu.scan3d.ui.theme.PlateDim
 import com.shiwu.scan3d.ui.theme.ShellBottom
 import com.shiwu.scan3d.ui.theme.ShellTop
+import com.shiwu.scan3d.ui.theme.glossy
 import com.shiwu.scan3d.ui.viewer.ModelViewer
 import com.shiwu.scan3d.util.shareModel
 import kotlinx.coroutines.Dispatchers
@@ -121,7 +119,6 @@ fun DeviceScreen(vm: DeviceViewModel) {
 
     var showKeyDialog by remember { mutableStateOf(false) }
 
-    // 相册导入状态
     var mediaGranted by remember { mutableStateOf(Gallery.hasPermission(context)) }
     val mediaLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -191,159 +188,178 @@ fun DeviceScreen(vm: DeviceViewModel) {
         )
     }
 
-    Box(
+    BoxWithConstraints(
         Modifier
             .fillMaxSize()
             .background(Brush.verticalGradient(listOf(ShellTop, ShellBottom, ShellBottom)))
     ) {
-        Column(Modifier.fillMaxSize().statusBarsPadding()) {
+        val landscape = maxWidth > maxHeight
 
-            NamePlate(recording = state.frames.isNotEmpty())
-
-            Spacer(Modifier.height(10.dp))
-
-            Box(
-                Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .padding(horizontal = 14.dp)
+        val viewfinder: @Composable (Modifier, Boolean) -> Unit = { mod, compact ->
+            CrtScreen(
+                modifier = mod,
+                hudLeft = if (state.mode == DeviceMode.LIVE) "F2.8 ISO400 24MM" else "",
+                hudRight = "%03d/%02d".format(state.frames.size, state.maxFrames),
+                hudBottom = when (state.mode) {
+                    DeviceMode.LIVE -> if (state.frames.isEmpty()) "ALIGN OBJECT / TAP TO CAPTURE" else "TAP = FRAME  HOLD = SUBMIT"
+                    DeviceMode.CONFIG -> "PARAMETERS"
+                    DeviceMode.ARCHIVE -> "LOCAL ARCHIVE"
+                    DeviceMode.IMPORT -> "ALBUM INPUT"
+                    DeviceMode.PREVIEW -> "3D PREVIEW"
+                    DeviceMode.PROCESSING -> "PROCESSING"
+                },
+                recording = state.frames.isNotEmpty() && state.mode == DeviceMode.LIVE,
+                compact = compact,
+                flash = flash.value
             ) {
-                CrtScreen(
-                    modifier = Modifier.fillMaxSize(),
-                    hudLeft = if (state.mode == DeviceMode.LIVE) "F2.8 · ISO400 · 24MM" else "",
-                    hudRight = "%03d/%02d".format(state.frames.size, state.maxFrames),
-                    hudBottom = when (state.mode) {
-                        DeviceMode.LIVE -> if (state.frames.isEmpty()) "ALIGN OBJECT / TAP TO CAPTURE" else "TAP = FRAME  HOLD = SUBMIT"
-                        DeviceMode.CONFIG -> "PARAMETERS"
-                        DeviceMode.ARCHIVE -> "LOCAL ARCHIVE"
-                        DeviceMode.IMPORT -> "ALBUM INPUT"
-                        DeviceMode.PREVIEW -> "3D PREVIEW"
-                        DeviceMode.PROCESSING -> "PROCESSING"
-                    },
-                    recording = state.frames.isNotEmpty() && state.mode == DeviceMode.LIVE,
-                    flash = flash.value
-                ) {
-                    // 取景层常驻，避免反复绑定相机
-                    if (hasCamera) {
-                        CameraPreview(
-                            modifier = Modifier.fillMaxSize(),
-                            onImageCaptureReady = { imageCapture = it },
-                            onCameraBound = { camera = it }
-                        )
-                    } else {
-                        CameraBlockedPanel(onGrant = { cameraLauncher.launch(Manifest.permission.CAMERA) })
-                    }
+                if (hasCamera) {
+                    CameraPreview(
+                        modifier = Modifier.fillMaxSize(),
+                        onImageCaptureReady = { imageCapture = it },
+                        onCameraBound = { camera = it }
+                    )
+                } else {
+                    CameraBlockedPanel(onGrant = { cameraLauncher.launch(Manifest.permission.CAMERA) })
+                }
 
-                    AnimatedContent(
-                        targetState = state.mode,
-                        transitionSpec = {
-                            (fadeIn(tween(180)) + scaleIn(tween(200), initialScale = 0.96f))
-                                .togetherWith(fadeOut(tween(120)) + scaleOut(tween(160), targetScale = 1.02f))
-                        },
-                        label = "panel"
-                    ) { mode ->
-                        when (mode) {
-                            DeviceMode.LIVE -> Box(Modifier.fillMaxSize())
-                            DeviceMode.CONFIG -> PanelSurface {
-                                ConfigPanel(
-                                    engineLabel = state.engine.label,
-                                    qualityLabel = state.quality.label,
-                                    regionLabel = if (state.settings.globalRegion) "GLOBAL" else "CN",
-                                    demoMode = state.settings.demoMode,
-                                    hasKey = state.settings.apiKey.isNotBlank(),
-                                    frames = state.frames.size,
-                                    probeText = when {
-                                        state.probe.checking -> "…"
-                                        state.probe.message.isBlank() -> "TEST"
-                                        else -> state.probe.message
-                                    },
-                                    probeOk = state.probe.ok,
-                                    onCycleEngine = vm::cycleEngine,
-                                    onCycleQuality = vm::cycleQuality,
-                                    onToggleRegion = vm::toggleRegion,
-                                    onToggleDemo = vm::toggleDemo,
-                                    onEditKey = { showKeyDialog = true },
-                                    onTest = vm::testConnection,
-                                    onOpenImport = vm::openImport,
-                                    onClearFrames = vm::clearFrames
+                AnimatedContent(
+                    targetState = state.mode,
+                    transitionSpec = {
+                        (fadeIn(tween(180)) + scaleIn(tween(200), initialScale = 0.96f))
+                            .togetherWith(fadeOut(tween(120)) + scaleOut(tween(160), targetScale = 1.02f))
+                    },
+                    label = "panel"
+                ) { mode ->
+                    when (mode) {
+                        DeviceMode.LIVE -> Box(Modifier.fillMaxSize())
+                        DeviceMode.CONFIG -> PanelSurface {
+                            ConfigPanel(
+                                engineLabel = state.engine.label,
+                                qualityLabel = state.quality.label,
+                                regionLabel = if (state.settings.globalRegion) "GLOBAL" else "CN",
+                                demoMode = state.settings.demoMode,
+                                hasKey = state.settings.apiKey.isNotBlank(),
+                                frames = state.frames.size,
+                                probeText = when {
+                                    state.probe.checking -> "…"
+                                    state.probe.message.isBlank() -> "TEST"
+                                    else -> state.probe.message
+                                },
+                                probeOk = state.probe.ok,
+                                onCycleEngine = vm::cycleEngine,
+                                onCycleQuality = vm::cycleQuality,
+                                onToggleRegion = vm::toggleRegion,
+                                onToggleDemo = vm::toggleDemo,
+                                onEditKey = { showKeyDialog = true },
+                                onTest = vm::testConnection,
+                                onOpenImport = vm::openImport,
+                                onClearFrames = vm::clearFrames
+                            )
+                        }
+                        DeviceMode.ARCHIVE -> PanelSurface {
+                            ArchivePanel(
+                                assets = state.assets,
+                                onOpen = { vm.openPreview(it.id) }
+                            )
+                        }
+                        DeviceMode.IMPORT -> PanelSurface {
+                            ImportPanel(
+                                items = importItems,
+                                selected = importSelected,
+                                loading = importLoading,
+                                onToggle = { id ->
+                                    importSelected = if (importSelected.contains(id)) {
+                                        importSelected - id
+                                    } else if (importSelected.size >= state.maxFrames - state.frames.size) {
+                                        importSelected
+                                    } else {
+                                        importSelected + id
+                                    }
+                                },
+                                onConfirm = {
+                                    val uris = importSelected.mapNotNull { id ->
+                                        importItems.firstOrNull { it.id == id }?.uri
+                                    }
+                                    vm.importFrames(uris)
+                                },
+                                onClose = vm::toLive
+                            )
+                        }
+                        DeviceMode.PREVIEW -> state.previewAsset?.let { asset ->
+                            Box(Modifier.fillMaxSize()) {
+                                ModelViewer(
+                                    modelFile = File(asset.modelPath),
+                                    modifier = Modifier.fillMaxSize(),
+                                    autoRotate = true,
+                                    dark = true
+                                )
+                                PreviewOverlay(
+                                    asset = asset,
+                                    onClose = vm::toLive,
+                                    onShare = { shareModel(context, File(asset.modelPath)) },
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .padding(
+                                            start = 14.dp,
+                                            end = 14.dp,
+                                            top = if (compact) 36.dp else 44.dp,
+                                            bottom = if (compact) 24.dp else 30.dp
+                                        )
                                 )
                             }
-                            DeviceMode.ARCHIVE -> PanelSurface {
-                                ArchivePanel(
-                                    assets = state.assets,
-                                    onOpen = { vm.openPreview(it.id) }
-                                )
-                            }
-                            DeviceMode.IMPORT -> PanelSurface {
-                                ImportPanel(
-                                    items = importItems,
-                                    selected = importSelected,
-                                    loading = importLoading,
-                                    onToggle = { id ->
-                                        importSelected = if (importSelected.contains(id)) {
-                                            importSelected - id
-                                        } else if (importSelected.size >= state.maxFrames - state.frames.size) {
-                                            importSelected
-                                        } else {
-                                            importSelected + id
-                                        }
-                                    },
-                                    onConfirm = {
-                                        val uris = importSelected.mapNotNull { id ->
-                                            importItems.firstOrNull { it.id == id }?.uri
-                                        }
-                                        vm.importFrames(uris)
-                                    },
-                                    onClose = vm::toLive
-                                )
-                            }
-                            DeviceMode.PREVIEW -> state.previewAsset?.let { asset ->
-                                Box(Modifier.fillMaxSize()) {
-                                    ModelViewer(
-                                        modelFile = File(asset.modelPath),
-                                        modifier = Modifier.fillMaxSize(),
-                                        autoRotate = true,
-                                        dark = true
-                                    )
-                                    PreviewOverlay(
-                                        asset = asset,
-                                        onClose = vm::toLive,
-                                        onShare = { shareModel(context, File(asset.modelPath)) },
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .padding(start = 14.dp, end = 14.dp, top = 44.dp, bottom = 30.dp)
-                                    )
-                                }
-                            } ?: Box(Modifier.fillMaxSize())
-                            DeviceMode.PROCESSING -> PanelSurface {
-                                ProcessingPanel(
-                                    job = state.job ?: com.shiwu.scan3d.data.JobUi(),
-                                    onCancel = vm::cancelGeneration,
-                                    onRetry = vm::retryGeneration
-                                )
-                            }
+                        } ?: Box(Modifier.fillMaxSize())
+                        DeviceMode.PROCESSING -> PanelSurface {
+                            ProcessingPanel(
+                                job = state.job ?: com.shiwu.scan3d.data.JobUi(),
+                                onCancel = vm::cancelGeneration,
+                                onRetry = vm::retryGeneration
+                            )
                         }
                     }
                 }
             }
+        }
 
-            Spacer(Modifier.height(12.dp))
-
-            ControlDeck(
+        val subDisplay: @Composable (Boolean) -> Unit = { compact ->
+            SubDisplay(
                 state = state,
                 torchOn = torchOn,
+                compact = compact,
                 onToggleTorch = {
-                    val c = camera ?: return@ControlDeck
-                    torchOn = !torchOn
-                    runCatching { c.cameraControl.enableTorch(torchOn) }
-                },
+                    camera?.let { c ->
+                        torchOn = !torchOn
+                        runCatching { c.cameraControl.enableTorch(torchOn) }
+                    }
+                }
+            )
+        }
+
+        val deck: @Composable (Boolean, Boolean) -> Unit = { vertical, compact ->
+            ControlDeck(
+                state = state,
+                vertical = vertical,
+                compact = compact,
                 onShoot = { shoot() },
                 onSubmit = { vm.submit() },
                 onConfig = vm::openConfig,
                 onArchive = vm::openArchive
             )
+        }
 
+        Column(
+            Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .padding(horizontal = 12.dp)
+        ) {
             Spacer(Modifier.height(8.dp))
+            subDisplay(landscape)
+            Spacer(Modifier.height(10.dp))
+            viewfinder(Modifier.weight(1f).fillMaxWidth(), landscape)
+            Spacer(Modifier.height(10.dp))
+            deck(false, landscape)
+            Spacer(Modifier.height(14.dp))
         }
 
         SnackbarHost(
@@ -367,150 +383,50 @@ fun DeviceScreen(vm: DeviceViewModel) {
     }
 }
 
+/**
+ * 顶部子显示屏：帧数、进度、引擎/精度、手电筒与操作提示。
+ */
 @Composable
-private fun PanelSurface(content: @Composable () -> Unit) {
-    Box(
-        Modifier
-            .fillMaxSize()
-            .background(Glass.copy(alpha = 0.985f))
-    ) { content() }
-}
-
-@Composable
-private fun NamePlate(recording: Boolean) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 14.dp, vertical = 10.dp)
-            .height(46.dp)
-            .clip(RoundedCornerShape(6.dp))
-            .background(
-                Brush.verticalGradient(
-                    listOf(BrassLight, Brass, BrassDark)
-                )
-            )
-            .padding(horizontal = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Screw()
-        Spacer(Modifier.width(10.dp))
-        Column(Modifier.weight(1f)) {
-            Text(
-                "拾 物 · SHIWU",
-                style = MaterialTheme.typography.titleSmall,
-                color = Ink,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = 2.sp
-            )
-            Text(
-                "MODEL SCANNER · LUX3D",
-                style = MaterialTheme.typography.labelSmall.copy(fontSize = 7.sp, letterSpacing = 1.1.sp),
-                color = Ink.copy(alpha = 0.7f),
-                maxLines = 1
-            )
-        }
-        Box(
-            Modifier
-                .size(8.dp)
-                .clip(CircleShape)
-                .background(if (recording) Color(0xFFC8442E) else Ink.copy(alpha = 0.35f))
-        )
-        Spacer(Modifier.width(8.dp))
-        Text(
-            "SN 01-1029",
-            style = MaterialTheme.typography.labelSmall.copy(fontSize = 7.sp, letterSpacing = 1.sp),
-            color = Ink.copy(alpha = 0.6f)
-        )
-        Spacer(Modifier.width(10.dp))
-        Screw()
-    }
-}
-
-@Composable
-private fun Screw() {
-    Canvas(Modifier.size(12.dp)) {
-        drawCircle(BrassDark, radius = size.minDimension / 2f)
-        drawCircle(Ink.copy(alpha = 0.55f), radius = size.minDimension / 2f, style = Stroke(1f))
-        drawLine(
-            Ink.copy(alpha = 0.6f),
-            Offset(size.width * 0.25f, size.height * 0.5f),
-            Offset(size.width * 0.75f, size.height * 0.5f),
-            strokeWidth = 1.2f
-        )
-    }
-}
-
-@Composable
-private fun CameraBlockedPanel(onGrant: () -> Unit) {
-    Box(
-        Modifier.fillMaxSize().background(Color(0xFF0A0D0A)),
-        contentAlignment = Alignment.Center
-    ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("CAMERA BLOCKED", style = MaterialTheme.typography.titleMedium, color = Amber)
-            Spacer(Modifier.height(6.dp))
-            Text(
-                "需要相机权限才能取景",
-                style = MaterialTheme.typography.bodySmall,
-                color = Cream.copy(alpha = 0.6f)
-            )
-            Spacer(Modifier.height(14.dp))
-            Box(
-                Modifier
-                    .clip(RoundedCornerShape(4.dp))
-                    .border(1.dp, Brass.copy(alpha = 0.6f), RoundedCornerShape(4.dp))
-                    .clickable(onClick = onGrant)
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-            ) {
-                Text("GRANT", style = MaterialTheme.typography.labelMedium, color = Amber)
-            }
-        }
-    }
-}
-
-@Composable
-private fun ControlDeck(
+private fun SubDisplay(
     state: DeviceState,
     torchOn: Boolean,
-    onToggleTorch: () -> Unit,
-    onShoot: () -> Unit,
-    onSubmit: () -> Unit,
-    onConfig: () -> Unit,
-    onArchive: () -> Unit
+    compact: Boolean,
+    onToggleTorch: () -> Unit
 ) {
     val live = state.mode == DeviceMode.LIVE
+    val hint = when (state.mode) {
+        DeviceMode.LIVE -> if (state.frames.isEmpty()) "轻按拍摄 · 长按提交" else "轻按继续拍 · 长按现在提交"
+        DeviceMode.CONFIG, DeviceMode.ARCHIVE, DeviceMode.IMPORT -> "再按一次对应按钮返回取景"
+        DeviceMode.PREVIEW -> "拖动旋转 · 双指缩放"
+        DeviceMode.PROCESSING -> "成像中，请稍候"
+    }
+
     Column(
         Modifier
             .fillMaxWidth()
-            .navigationBarsPadding()
-            .padding(horizontal = 14.dp)
+            .clip(RoundedCornerShape(3.dp))
+            .background(Color(0xFF0B0D0A))
+            .border(1.dp, BrassDark.copy(alpha = 0.6f), RoundedCornerShape(3.dp))
+            .padding(horizontal = 10.dp, vertical = if (compact) 5.dp else 7.dp)
     ) {
-        // 计数条
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(5.dp))
-                .background(Deck)
-                .border(1.dp, DeckEdge, RoundedCornerShape(5.dp))
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 "FRAMES",
-                style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp, letterSpacing = 2.sp),
-                color = AmberDim
+                style = MaterialTheme.typography.labelSmall,
+                color = AmberDim,
+                fontSize = 8.sp
             )
             Spacer(Modifier.width(8.dp))
             Text(
                 "%03d".format(state.frames.size),
-                style = MaterialTheme.typography.titleMedium,
+                style = MaterialTheme.typography.titleMedium.glossy(),
                 color = Amber,
-                fontWeight = FontWeight.Bold
+                fontSize = if (compact) 12.sp else 16.sp
             )
             Spacer(Modifier.width(10.dp))
             Row(
                 Modifier.weight(1f),
-                horizontalArrangement = Arrangement.spacedBy(3.dp),
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 repeat(state.maxFrames) { i ->
@@ -527,87 +443,164 @@ private fun ControlDeck(
             }
             Spacer(Modifier.width(10.dp))
             Text(
-                state.engine.label.uppercase() + " / " + state.quality.label,
-                style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp, letterSpacing = 1.2.sp),
-                color = Cream.copy(alpha = 0.55f)
+                "${state.engine.label.uppercase()} / ${state.quality.label}",
+                style = MaterialTheme.typography.labelSmall,
+                color = Cream.copy(alpha = 0.6f),
+                fontSize = 8.sp,
+                maxLines = 1
             )
         }
 
-        Spacer(Modifier.height(10.dp))
+        Spacer(Modifier.height(5.dp))
 
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(2.dp))
+                    .border(
+                        1.dp,
+                        if (torchOn) Amber else Brass.copy(alpha = 0.35f),
+                        RoundedCornerShape(2.dp)
+                    )
+                    .clickable(enabled = live, onClick = onToggleTorch)
+                    .padding(horizontal = 6.dp, vertical = 2.dp)
+            ) {
+                Text(
+                    if (torchOn) "灯 ON" else "灯 OFF",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (torchOn) Amber else Cream.copy(alpha = 0.45f),
+                    fontSize = 8.sp
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            Text(
+                hint,
+                style = MaterialTheme.typography.bodySmall,
+                color = Cream.copy(alpha = 0.55f),
+                fontSize = if (compact) 8.sp else 12.sp,
+                maxLines = 1
+            )
+        }
+    }
+}
+
+@Composable
+private fun PanelSurface(content: @Composable () -> Unit) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(Glass.copy(alpha = 0.985f))
+    ) { content() }
+}
+
+@Composable
+private fun CameraBlockedPanel(onGrant: () -> Unit) {
+    Box(
+        Modifier.fillMaxSize().background(Color(0xFF0A0D0A)),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                "CAMERA BLOCKED",
+                style = MaterialTheme.typography.titleSmall.glossy(),
+                color = Amber
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "需要相机权限才能取景",
+                style = MaterialTheme.typography.bodySmall,
+                color = Cream.copy(alpha = 0.6f)
+            )
+            Spacer(Modifier.height(12.dp))
+            Box(
+                Modifier
+                    .clip(RoundedCornerShape(3.dp))
+                    .border(1.dp, Brass.copy(alpha = 0.6f), RoundedCornerShape(3.dp))
+                    .clickable(onClick = onGrant)
+                    .padding(horizontal = 14.dp, vertical = 6.dp)
+            ) {
+                Text(
+                    "GRANT",
+                    style = MaterialTheme.typography.labelLarge.glossy(),
+                    color = Amber
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ControlDeck(
+    state: DeviceState,
+    vertical: Boolean,
+    compact: Boolean,
+    onShoot: () -> Unit,
+    onSubmit: () -> Unit,
+    onConfig: () -> Unit,
+    onArchive: () -> Unit
+) {
+    val live = state.mode == DeviceMode.LIVE
+    val knobSize = if (compact) 100.dp else 116.dp
+    val buttonSize = if (compact) 54.dp else 66.dp
+
+    val config: @Composable () -> Unit = {
+        HardwareButton(
+            label = "配置",
+            sub = "CONFIG",
+            active = state.mode == DeviceMode.CONFIG,
+            size = buttonSize,
+            onClick = onConfig
+        ) { color -> drawSliders(color) }
+    }
+    val archive: @Composable () -> Unit = {
+        HardwareButton(
+            label = "资产",
+            sub = "ARCHIVE",
+            active = state.mode == DeviceMode.ARCHIVE,
+            size = buttonSize,
+            onClick = onArchive
+        ) { color -> drawArchive(color) }
+    }
+    val knob: @Composable () -> Unit = {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            ShutterKnob(
+                turns = state.frames.size,
+                frames = state.frames.size,
+                maxFrames = state.maxFrames,
+                enabled = live,
+                diameter = knobSize,
+                onTap = onShoot,
+                onLongPress = onSubmit
+            )
+            Spacer(Modifier.height(2.dp))
+            Text(
+                if (state.frames.isEmpty()) "SHUTTER" else "长按提交 · ${state.frames.size} 帧",
+                style = MaterialTheme.typography.labelSmall,
+                color = if (live) AmberDim else Cream.copy(alpha = 0.3f),
+                fontSize = 8.sp
+            )
+        }
+    }
+
+    if (vertical) {
+        Column(
+            Modifier.fillMaxSize(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceEvenly
+        ) {
+            config()
+            knob()
+            archive()
+        }
+    } else {
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            HardwareButton(
-                label = "配置",
-                sub = "CONFIG",
-                active = state.mode == DeviceMode.CONFIG,
-                onClick = onConfig
-            ) { color -> drawSliders(color) }
-
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                ShutterKnob(
-                    turns = state.frames.size,
-                    frames = state.frames.size,
-                    maxFrames = state.maxFrames,
-                    enabled = live,
-                    onTap = onShoot,
-                    onLongPress = onSubmit
-                )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    if (state.frames.isEmpty()) "SHUTTER" else "长按提交 · ${state.frames.size} 帧",
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp, letterSpacing = 1.2.sp),
-                    color = if (live) AmberDim else Cream.copy(alpha = 0.3f)
-                )
-            }
-
-            HardwareButton(
-                label = "资产",
-                sub = "ARCHIVE",
-                active = state.mode == DeviceMode.ARCHIVE,
-                onClick = onArchive
-            ) { color -> drawArchive(color) }
-        }
-
-        Spacer(Modifier.height(6.dp))
-
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                Modifier
-                    .clip(RoundedCornerShape(3.dp))
-                    .border(
-                        1.dp,
-                        if (torchOn) Amber else Brass.copy(alpha = 0.35f),
-                        RoundedCornerShape(3.dp)
-                    )
-                    .clickable(enabled = live, onClick = onToggleTorch)
-                    .padding(horizontal = 10.dp, vertical = 4.dp)
-            ) {
-                Text(
-                    if (torchOn) "灯 ON" else "灯 OFF",
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp, letterSpacing = 1.2.sp),
-                    color = if (torchOn) Amber else Cream.copy(alpha = 0.45f)
-                )
-            }
-            Spacer(Modifier.width(10.dp))
-            Text(
-                when (state.mode) {
-                    DeviceMode.LIVE -> if (state.frames.isEmpty()) "轻按拍摄 · 长按提交" else "轻按继续拍 · 长按现在提交"
-                    DeviceMode.CONFIG, DeviceMode.ARCHIVE, DeviceMode.IMPORT -> "再按一次对应按钮返回取景"
-                    DeviceMode.PREVIEW -> "拖动旋转 · 双指缩放"
-                    DeviceMode.PROCESSING -> "成像中，请稍候"
-                },
-                style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp, letterSpacing = 1.sp),
-                color = Cream.copy(alpha = 0.4f),
-                textAlign = TextAlign.Center
-            )
+            config()
+            knob()
+            archive()
         }
     }
 }
@@ -617,13 +610,14 @@ private fun HardwareButton(
     label: String,
     sub: String,
     active: Boolean,
+    size: Dp,
     onClick: () -> Unit,
     glyph: DrawScope.(Color) -> Unit
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Box(
             Modifier
-                .size(66.dp)
+                .size(size)
                 .clip(RoundedCornerShape(12.dp))
                 .background(
                     Brush.verticalGradient(
@@ -634,20 +628,22 @@ private fun HardwareButton(
                 .clickable(onClick = onClick),
             contentAlignment = Alignment.Center
         ) {
-            Canvas(Modifier.size(26.dp)) {
+            Canvas(Modifier.size(size * 0.4f)) {
                 glyph(if (active) Amber else Cream.copy(alpha = 0.62f))
             }
         }
         Spacer(Modifier.height(4.dp))
         Text(
             label,
-            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
-            color = if (active) Amber else Cream.copy(alpha = 0.6f)
+            style = MaterialTheme.typography.labelSmall,
+            color = if (active) Amber else Cream.copy(alpha = 0.6f),
+            fontSize = 8.sp
         )
         Text(
             sub,
-            style = MaterialTheme.typography.labelSmall.copy(fontSize = 7.sp, letterSpacing = 1.2.sp),
-            color = Cream.copy(alpha = 0.28f)
+            style = MaterialTheme.typography.labelSmall,
+            color = Cream.copy(alpha = 0.28f),
+            fontSize = 8.sp
         )
     }
 }
@@ -683,29 +679,30 @@ private fun ApiKeyDialog(initial: String, onDismiss: () -> Unit, onSave: (String
     Dialog(onDismissRequest = onDismiss) {
         Column(
             Modifier
-                .clip(RoundedCornerShape(8.dp))
+                .clip(RoundedCornerShape(4.dp))
                 .background(Deck)
-                .border(1.dp, Brass.copy(alpha = 0.5f), RoundedCornerShape(8.dp))
-                .padding(16.dp)
+                .border(2.dp, Brass.copy(alpha = 0.55f), RoundedCornerShape(4.dp))
+                .padding(14.dp)
         ) {
             Text(
                 "API KEY",
-                style = MaterialTheme.typography.titleSmall,
+                style = MaterialTheme.typography.titleSmall.glossy(),
                 color = Amber
             )
             Spacer(Modifier.height(4.dp))
             Text(
                 "在 lux3d.aholo3d.cn 控制台申请，仅存本机",
-                style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp),
-                color = Cream.copy(alpha = 0.5f)
+                style = MaterialTheme.typography.labelSmall,
+                color = Cream.copy(alpha = 0.5f),
+                fontSize = 8.sp
             )
             Spacer(Modifier.height(10.dp))
             OutlinedTextField(
                 value = value,
                 onValueChange = { value = it },
                 singleLine = true,
-                textStyle = MaterialTheme.typography.bodyMedium,
-                shape = RoundedCornerShape(4.dp),
+                textStyle = MaterialTheme.typography.bodySmall,
+                shape = RoundedCornerShape(2.dp),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedBorderColor = Amber,
                     unfocusedBorderColor = Brass.copy(alpha = 0.4f),
@@ -724,13 +721,4 @@ private fun ApiKeyDialog(initial: String, onDismiss: () -> Unit, onSave: (String
             }
         }
     }
-}
-
-private fun modeLabel(mode: DeviceMode): String = when (mode) {
-    DeviceMode.LIVE -> "SCAN MODE"
-    DeviceMode.CONFIG -> "CONFIG"
-    DeviceMode.ARCHIVE -> "ARCHIVE"
-    DeviceMode.IMPORT -> "IMPORT"
-    DeviceMode.PREVIEW -> "PREVIEW"
-    DeviceMode.PROCESSING -> "PROCESS"
 }

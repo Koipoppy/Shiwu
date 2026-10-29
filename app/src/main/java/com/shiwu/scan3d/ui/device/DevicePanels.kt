@@ -46,6 +46,7 @@ import com.shiwu.scan3d.ui.theme.Amber
 import com.shiwu.scan3d.ui.theme.AmberDim
 import com.shiwu.scan3d.ui.theme.Brass
 import com.shiwu.scan3d.ui.theme.Cream
+import com.shiwu.scan3d.ui.theme.glossy
 import com.shiwu.scan3d.ui.theme.SignalRed
 import com.shiwu.scan3d.util.humanSize
 import java.io.File
@@ -65,9 +66,10 @@ fun PanelTitle(main: String, sub: String) {
         Column {
             Text(
                 main,
-                style = MaterialTheme.typography.titleSmall,
-                color = Cream,
-                fontWeight = FontWeight.Bold
+                style = MaterialTheme.typography.titleSmall.glossy(
+                    base = Cream,
+                    highlight = Color.White
+                )
             )
             Text(
                 sub,
@@ -98,13 +100,17 @@ fun RetroRow(
             Text(label, style = MaterialTheme.typography.titleSmall, color = Cream)
             Text(
                 sub,
-                style = MaterialTheme.typography.labelSmall.copy(fontSize = 7.5.sp, letterSpacing = 1.6.sp),
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp, letterSpacing = 1.6.sp),
                 color = AmberDim
             )
         }
         Text(
             value,
-            style = MaterialTheme.typography.titleSmall,
+            style = if (valueColor == Amber) {
+                MaterialTheme.typography.titleSmall.glossy()
+            } else {
+                MaterialTheme.typography.titleSmall
+            },
             color = valueColor,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -295,7 +301,7 @@ private fun ArchiveCell(asset: AssetItem, onClick: () -> Unit) {
             )
             Text(
                 asset.name,
-                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp),
                 color = Cream,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -381,7 +387,7 @@ fun ProcessingPanel(job: JobUi, onCancel: () -> Unit, onRetry: () -> Unit) {
 
         Text(
             job.taskId?.let { "TASK #$it" } ?: "QUEUED",
-            style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, letterSpacing = 1.6.sp),
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp, letterSpacing = 1.6.sp),
             color = AmberDim
         )
         Spacer(Modifier.height(10.dp))
@@ -459,7 +465,7 @@ fun ImportPanel(
                             ) {
                                 Text(
                                     "${index + 1}",
-                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp),
                                     color = Color(0xFF17130E),
                                     fontWeight = FontWeight.Bold
                                 )
@@ -553,7 +559,7 @@ fun PreviewOverlay(
             )
             Text(
                 "${asset.version} · ${asset.faceCount / 1000}K · ${humanSize(asset.sizeBytes)}",
-                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp, letterSpacing = 1.sp),
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp, letterSpacing = 1.sp),
                 color = AmberDim
             )
         }

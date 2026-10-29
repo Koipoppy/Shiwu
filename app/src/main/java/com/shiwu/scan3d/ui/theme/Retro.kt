@@ -6,21 +6,23 @@ import androidx.compose.material3.Shapes
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-// ---- 复古未来主义：炭黑机身 / 米色面板 / 黄铜 / 琥珀 CRT ----
+// ---- 复古未来主义：炭黑机身 / 黄铜 / 琥珀 CRT ----
 val ShellTop = Color(0xFF2B251C)
 val ShellBottom = Color(0xFF14110C)
 val Deck = Color(0xFF211C15)
 val DeckEdge = Color(0xFF3A3226)
 val Plate = Color(0xFFD8C9AB)
 val PlateDim = Color(0xFFBFB08F)
-val PlateShadow = Color(0xFF9C8E70)
 val Brass = Color(0xFFC79A4E)
 val BrassLight = Color(0xFFE9C77F)
 val BrassDark = Color(0xFF8A6832)
@@ -59,6 +61,9 @@ private val RetroColors = darkColorScheme(
     inverseOnSurface = Ink
 )
 
+/**
+ * 像素字体按 12px 设计，放大时最好取 12 的整数倍；这里统一用 8/12/16/20/24/32/40。
+ */
 private val RetroType = Typography(
     displayLarge = TextStyle(
         fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold,
@@ -121,6 +126,13 @@ private val RetroShapes = Shapes(
     large = RoundedCornerShape(16.dp),
     extraLarge = RoundedCornerShape(24.dp)
 )
+
+/** 保留调用点，但不再做反光/描边处理，只设颜色。 */
+fun TextStyle.glossy(
+    base: Color = Amber,
+    highlight: Color = Color(0xFFFFE9C2),
+    shadowAlpha: Float = 0.55f
+): TextStyle = copy(color = base)
 
 @Composable
 fun RetroTheme(content: @Composable () -> Unit) {
