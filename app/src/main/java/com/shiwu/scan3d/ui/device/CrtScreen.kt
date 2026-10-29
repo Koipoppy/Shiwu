@@ -81,7 +81,33 @@ fun CrtScreen(
                 .clip(RoundedCornerShape(17.dp))
                 .background(Glass)
         ) {
-            content()
+            // 屏幕内容（相机 / 面板 / HUD）整体随姿态旋转，旋转后仍精确铺满玻璃
+            val rot by animateFloatAsState(
+                targetValue = hudRotation.toFloat(),
+                animationSpec = tween(260),
+                label = "contentRotation"
+            )
+            BoxWithConstraints(Modifier.fillMaxSize()) {
+                val quarter = (Math.round(hudRotation / 90f) % 2) != 0
+                val boxW = if (quarter) maxHeight else maxWidth
+                val boxH = if (quarter) maxWidth else maxHeight
+                Box(
+                    Modifier
+                        .align(Alignment.Center)
+                        .size(boxW, boxH)
+                        .graphicsLayer { rotationZ = rot }
+                ) {
+                    content()
+                    HudOverlay(
+                        hudLeft = hudLeft,
+                        hudRight = hudRight,
+                        hudBottom = hudBottom,
+                        recording = recording,
+                        compact = compact,
+                        recBlink = recBlink
+                    )
+                }
+            }
 
             // 镀膜 + 扫描线 + 下扫亮带 + 暗角
             Canvas(Modifier.fillMaxSize()) {
@@ -139,85 +165,6 @@ fun CrtScreen(
                 bracket(size.width - m, size.height - m, -1f, -1f)
             }
 
-            // HUD：跟随机身姿态整体旋转，旋转后仍精确覆盖玻璃
-            val rot by animateFloatAsState(
-                targetValue = hudRotation.toFloat(),
-                animationSpec = tween(260),
-                label = "hudRotation"
-            )
-            BoxWithConstraints(Modifier.fillMaxSize()) {
-                val quarter = (Math.round(hudRotation / 90f) % 2) != 0
-                val boxW = if (quarter) maxHeight else maxWidth
-                val boxH = if (quarter) maxWidth else maxHeight
-                Box(
-                    Modifier
-                        .align(Alignment.Center)
-                        .size(boxW, boxH)
-                        .graphicsLayer { rotationZ = rot }
-                ) {
-                    Box(
-                        Modifier
-                            .fillMaxSize()
-                            .padding(if (compact) 15.dp else 20.dp)
-                    ) {
-                        Row(
-                            Modifier
-                                .align(Alignment.TopStart)
-                                .fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            if (recording) {
-                                Box(
-                                    Modifier
-                                        .clip(RoundedCornerShape(2.dp))
-                                        .background(SignalRed.copy(alpha = recBlink))
-                                        .padding(horizontal = 5.dp, vertical = 1.dp)
-                                ) {
-                                    Text(
-                                        "REC",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = Cream,
-                                        fontSize = 9.sp
-                                    )
-                                }
-                            } else {
-                                Text(
-                                    "● STANDBY",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Amber.copy(alpha = 0.7f),
-                                    fontSize = 9.sp
-                                )
-                            }
-                            Spacer(Modifier.weight(1f))
-                            Text(
-                                hudRight,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Amber,
-                                fontSize = if (compact) 10.sp else 11.sp
-                            )
-                        }
-
-                        if (hudLeft.isNotBlank()) {
-                            Text(
-                                hudLeft,
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Amber.copy(alpha = 0.75f),
-                                fontSize = 9.sp,
-                                modifier = Modifier.align(Alignment.TopStart).padding(top = 18.dp)
-                            )
-                        }
-
-                        Text(
-                            hudBottom,
-                            style = MaterialTheme.typography.labelSmall,
-                            color = Amber.copy(alpha = 0.8f),
-                            fontSize = 9.sp,
-                            modifier = Modifier.align(Alignment.BottomStart)
-                        )
-                    }
-                }
-            }
-
             // 快门闪白
             if (flash > 0f) {
                 Box(
@@ -227,5 +174,76 @@ fun CrtScreen(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun BoxScope.HudOverlay(
+    hudLeft: String,
+    hudRight: String,
+    hudBottom: String,
+    recording: Boolean,
+    compact: Boolean,
+    recBlink: Float
+) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .padding(if (compact) 15.dp else 20.dp)
+    ) {
+        Row(
+            Modifier
+                .align(Alignment.TopStart)
+                .fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            if (recording) {
+                Box(
+                    Modifier
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(SignalRed.copy(alpha = recBlink))
+                        .padding(horizontal = 5.dp, vertical = 1.dp)
+                ) {
+                    Text(
+                        "REC",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Cream,
+                        fontSize = 9.sp
+                    )
+                }
+            } else {
+                Text(
+                    "● STANDBY",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Amber.copy(alpha = 0.7f),
+                    fontSize = 9.sp
+                )
+            }
+            Spacer(Modifier.weight(1f))
+            Text(
+                hudRight,
+                style = MaterialTheme.typography.labelSmall,
+                color = Amber,
+                fontSize = if (compact) 10.sp else 11.sp
+            )
+        }
+
+        if (hudLeft.isNotBlank()) {
+            Text(
+                hudLeft,
+                style = MaterialTheme.typography.labelSmall,
+                color = Amber.copy(alpha = 0.75f),
+                fontSize = 9.sp,
+                modifier = Modifier.align(Alignment.TopStart).padding(top = 18.dp)
+            )
+        }
+
+        Text(
+            hudBottom,
+            style = MaterialTheme.typography.labelSmall,
+            color = Amber.copy(alpha = 0.8f),
+            fontSize = 9.sp,
+            modifier = Modifier.align(Alignment.BottomStart)
+        )
     }
 }

@@ -247,7 +247,7 @@ fun ArchivePanel(
             }
         } else {
             LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
+                columns = GridCells.Adaptive(minSize = 118.dp),
                 modifier = Modifier.weight(1f),
                 contentPadding = PaddingValues(bottom = 6.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -433,7 +433,7 @@ fun ImportPanel(
                 Text("相册里没有可用底片", style = MaterialTheme.typography.bodySmall, color = Cream.copy(alpha = 0.5f))
             }
             else -> LazyVerticalGrid(
-                columns = GridCells.Fixed(3),
+                columns = GridCells.Adaptive(minSize = 82.dp),
                 modifier = Modifier.weight(1f),
                 contentPadding = PaddingValues(bottom = 6.dp),
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
