@@ -749,8 +749,13 @@ private fun rememberHudRotation(): Int {
         val listener = object : SensorEventListener {
             override fun onSensorChanged(event: SensorEvent) {
                 if (event.sensor.type != Sensor.TYPE_ACCELEROMETER) return
-                smoothX = smoothX * 0.82f + event.values[0] * 0.18f
-                smoothY = smoothY * 0.82f + event.values[1] * 0.18f
+                val ax = event.values[0]
+                val ay = event.values[1]
+                // 平放在桌上时重力几乎全在 Z 轴，平面分量很小，角度不可靠：
+                // 此时保持上一次方向，避免噪声把 HUD 甩到 90°。
+                if (Math.hypot(ax.toDouble(), ay.toDouble()) < 2.5) return
+                smoothX = smoothX * 0.82f + ax * 0.18f
+                smoothY = smoothY * 0.82f + ay * 0.18f
                 val deg = Math.toDegrees(
                     kotlin.math.atan2(smoothX.toDouble(), smoothY.toDouble())
                 ).toFloat()
