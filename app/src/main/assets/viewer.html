@@ -95,6 +95,14 @@
       var model = params.get('model');
       trace('src=' + model);
 
+      if (params.get('bg') === 'dark') {
+        document.documentElement.style.background = '#070A08';
+        document.body.style.background = 'radial-gradient(120% 85% at 50% 16%, #10150F 0%, #080B08 58%, #050705 100%)';
+        mv.setAttribute('environment-image', 'neutral');
+        mv.setAttribute('exposure', '1.02');
+        mv.setAttribute('shadow-intensity', '0.5');
+      }
+
       // 某些 Android WebView 里百分比/vh 高度会算成 0，这里直接按视口像素锁定尺寸。
       function fit() {
         var w = window.innerWidth || 1;

@@ -37,6 +37,7 @@ fun ModelViewer(
     modelFile: File,
     modifier: Modifier = Modifier,
     autoRotate: Boolean = true,
+    dark: Boolean = false,
     onLoaded: (() -> Unit)? = null,
     onError: ((String) -> Unit)? = null
 ) {
@@ -44,11 +45,12 @@ fun ModelViewer(
     val currentOnError by rememberUpdatedState(onError)
     val currentOnLoaded by rememberUpdatedState(onLoaded)
 
-    val webView = remember(modelFile.absolutePath, autoRotate) {
+    val webView = remember(modelFile.absolutePath, autoRotate, dark) {
         createViewer(
             context = context,
             modelName = modelFile.name,
             autoRotate = autoRotate,
+            dark = dark,
             onLoaded = { currentOnLoaded?.invoke() },
             onError = { message -> currentOnError?.invoke(message) }
         )
@@ -75,6 +77,7 @@ private fun createViewer(
     context: Context,
     modelName: String,
     autoRotate: Boolean,
+    dark: Boolean,
     onLoaded: () -> Unit,
     onError: (String) -> Unit
 ): WebView {
@@ -133,6 +136,7 @@ private fun createViewer(
 
         val encodedName = URLEncoder.encode(modelName, "UTF-8")
         val rotate = if (autoRotate) "1" else "0"
-        loadUrl("https://appassets.androidplatform.net/assets/viewer.html?model=/files/$encodedName&rotate=$rotate")
+        val bg = if (dark) "dark" else "light"
+        loadUrl("https://appassets.androidplatform.net/assets/viewer.html?model=/files/$encodedName&rotate=$rotate&bg=$bg")
     }
 }
