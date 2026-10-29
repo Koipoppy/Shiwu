@@ -219,18 +219,19 @@ fun DeviceScreen(vm: DeviceViewModel) {
                 recording = state.frames.isNotEmpty() && state.mode == DeviceMode.LIVE,
                 compact = compact,
                 flash = flash.value,
-                hudRotation = hudRotation
-            ) {
-                if (hasCamera) {
-                    CameraPreview(
-                        modifier = Modifier.fillMaxSize(),
-                        onImageCaptureReady = { imageCapture = it },
-                        onCameraBound = { camera = it }
-                    )
-                } else {
-                    CameraBlockedPanel(onGrant = { cameraLauncher.launch(Manifest.permission.CAMERA) })
+                hudRotation = hudRotation,
+                cameraLayer = {
+                    if (hasCamera) {
+                        CameraPreview(
+                            modifier = Modifier.fillMaxSize(),
+                            onImageCaptureReady = { imageCapture = it },
+                            onCameraBound = { camera = it }
+                        )
+                    } else {
+                        CameraBlockedPanel(onGrant = { cameraLauncher.launch(Manifest.permission.CAMERA) })
+                    }
                 }
-
+            ) {
                 AnimatedContent(
                     targetState = state.mode,
                     transitionSpec = {
@@ -751,9 +752,12 @@ private fun rememberHudRotation(): Int {
                 if (event.sensor.type != Sensor.TYPE_ACCELEROMETER) return
                 val ax = event.values[0]
                 val ay = event.values[1]
-                // 平放在桌上时重力几乎全在 Z 轴，平面分量很小，角度不可靠：
-                // 此时保持上一次方向，避免噪声把 HUD 甩到 90°。
-                if (Math.hypot(ax.toDouble(), ay.toDouble()) < 2.5) return
+                // 平放在桌上时重力几乎全在 Z 轴，平面分量很小，方向没有意义：
+                // 直接回到 0°，避免噪声把 HUD 甩到 90° 后卡住。
+                if (Math.hypot(ax.toDouble(), ay.toDouble()) < 2.5) {
+                    if (angle != 0) angle = 0
+                    return
+                }
                 smoothX = smoothX * 0.82f + ax * 0.18f
                 smoothY = smoothY * 0.82f + ay * 0.18f
                 val deg = Math.toDegrees(

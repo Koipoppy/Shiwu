@@ -53,6 +53,7 @@ fun CrtScreen(
     compact: Boolean = false,
     flash: Float = 0f,
     hudRotation: Int = 0,
+    cameraLayer: @Composable BoxScope.() -> Unit = {},
     content: @Composable BoxScope.() -> Unit
 ) {
     val transition = rememberInfiniteTransition(label = "crt")
@@ -81,7 +82,10 @@ fun CrtScreen(
                 .clip(RoundedCornerShape(17.dp))
                 .background(Glass)
         ) {
-            // 屏幕内容（相机 / 面板 / HUD）整体随姿态旋转，旋转后仍精确铺满玻璃
+            // 取景画面：保持设备朝向，不参与旋转
+            cameraLayer()
+
+            // 屏幕内容（面板 / HUD）随姿态旋转，旋转后仍精确铺满玻璃
             val rot by animateFloatAsState(
                 targetValue = hudRotation.toFloat(),
                 animationSpec = tween(260),
