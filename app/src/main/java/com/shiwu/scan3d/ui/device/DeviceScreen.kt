@@ -1,7 +1,12 @@
 package com.shiwu.scan3d.ui.device
 
 import android.Manifest
+import android.content.Context
 import android.content.pm.PackageManager
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -43,8 +48,10 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -194,6 +201,7 @@ fun DeviceScreen(vm: DeviceViewModel) {
             .background(Brush.verticalGradient(listOf(ShellTop, ShellBottom, ShellBottom)))
     ) {
         val landscape = maxWidth > maxHeight
+        val hudRotation = rememberHudRotation()
 
         val viewfinder: @Composable (Modifier, Boolean) -> Unit = { mod, compact ->
             CrtScreen(
@@ -210,7 +218,8 @@ fun DeviceScreen(vm: DeviceViewModel) {
                 },
                 recording = state.frames.isNotEmpty() && state.mode == DeviceMode.LIVE,
                 compact = compact,
-                flash = flash.value
+                flash = flash.value,
+                hudRotation = hudRotation
             ) {
                 if (hasCamera) {
                     CameraPreview(
@@ -721,4 +730,42 @@ private fun ApiKeyDialog(initial: String, onDismiss: () -> Unit, onSave: (String
             }
         }
     }
+}
+
+/**
+ * 机身姿态：返回 HUD 需要旋转的角度（0 / 90 / 180 / 270）。
+ * 应用锁竖屏，屏幕内容不动，只有取景 HUD 跟着机身转，保证用户看到的方向是正的。
+ */
+@Composable
+private fun rememberHudRotation(): Int {
+    val context = LocalContext.current
+    var angle by remember { mutableIntStateOf(0) }
+
+    DisposableEffect(Unit) {
+        val sm = context.getSystemService(Context.SENSOR_SERVICE) as? SensorManager
+        val sensor = sm?.getDefaultSensor(Sensor.TYPE_ACCELEROMETER)
+        var smoothX = 0f
+        var smoothY = 9.81f
+        val listener = object : SensorEventListener {
+            override fun onSensorChanged(event: SensorEvent) {
+                if (event.sensor.type != Sensor.TYPE_ACCELEROMETER) return
+                smoothX = smoothX * 0.82f + event.values[0] * 0.18f
+                smoothY = smoothY * 0.82f + event.values[1] * 0.18f
+                val deg = Math.toDegrees(
+                    kotlin.math.atan2(smoothX.toDouble(), smoothY.toDouble())
+                ).toFloat()
+                val snapped = (Math.round(deg / 90f) * 90).toInt()
+                if (snapped != angle) angle = snapped
+            }
+
+            override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+        }
+        if (sm != null && sensor != null) {
+            sm.registerListener(listener, sensor, SensorManager.SENSOR_DELAY_UI)
+        }
+        onDispose {
+            if (sm != null) sm.unregisterListener(listener)
+        }
+    }
+    return angle
 }
