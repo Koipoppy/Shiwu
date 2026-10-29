@@ -40,6 +40,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -65,6 +66,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -77,6 +79,8 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.shiwu.scan3d.data.Gallery
 import com.shiwu.scan3d.data.GalleryItem
 import com.shiwu.scan3d.ui.components.CameraPreview
+import com.shiwu.scan3d.ui.components.SubjectBox
+import com.shiwu.scan3d.ui.components.SubjectSegmenter
 import com.shiwu.scan3d.ui.theme.Amber
 import com.shiwu.scan3d.ui.theme.AmberDim
 import com.shiwu.scan3d.ui.theme.Brass
@@ -125,6 +129,20 @@ fun DeviceScreen(vm: DeviceViewModel) {
     val flash = remember { Animatable(0f) }
 
     var showKeyDialog by remember { mutableStateOf(false) }
+
+    // 类别无关的主体框：中心点自动取种，用户点取景屏可以改指定物体。
+    val subjectSegmenter = remember { SubjectSegmenter(context) }
+    DisposableEffect(Unit) {
+        onDispose { subjectSegmenter.close() }
+    }
+    var subjectBox by remember { mutableStateOf<SubjectBox?>(null) }
+    var frameAspect by remember { mutableStateOf(4f / 3f) }
+    var seedX by remember { mutableStateOf(0.5f) }
+    var seedY by remember { mutableStateOf(0.5f) }
+
+    LaunchedEffect(state.mode) {
+        if (state.mode != DeviceMode.LIVE) subjectBox = null
+    }
 
     var mediaGranted by remember { mutableStateOf(Gallery.hasPermission(context)) }
     val mediaLauncher = rememberLauncherForActivityResult(
@@ -222,11 +240,32 @@ fun DeviceScreen(vm: DeviceViewModel) {
                 hudRotation = hudRotation,
                 cameraLayer = {
                     if (hasCamera) {
-                        CameraPreview(
-                            modifier = Modifier.fillMaxSize(),
-                            onImageCaptureReady = { imageCapture = it },
-                            onCameraBound = { camera = it }
-                        )
+                        Box(Modifier.fillMaxSize()) {
+                            CameraPreview(
+                                modifier = Modifier.fillMaxSize(),
+                                segmenter = subjectSegmenter,
+                                detectionEnabled = state.mode == DeviceMode.LIVE,
+                                onSubject = { subjectBox = it },
+                                onAspect = { frameAspect = it },
+                                onImageCaptureReady = { imageCapture = it },
+                                onCameraBound = { camera = it }
+                            )
+                            if (state.mode == DeviceMode.LIVE) {
+                                SubjectOverlay(
+                                    box = subjectBox,
+                                    aspect = frameAspect,
+                                    seedX = seedX,
+                                    seedY = seedY,
+                                    modifier = Modifier.fillMaxSize(),
+                                    onSeed = { nx, ny ->
+                                        subjectBox = null
+                                        seedX = nx
+                                        seedY = ny
+                                        subjectSegmenter.setSeed(nx, ny)
+                                    }
+                                )
+                            }
+                        }
                     } else {
                         CameraBlockedPanel(onGrant = { cameraLauncher.launch(Manifest.permission.CAMERA) })
                     }
@@ -333,14 +372,7 @@ fun DeviceScreen(vm: DeviceViewModel) {
         val subDisplay: @Composable (Boolean) -> Unit = { compact ->
             SubDisplay(
                 state = state,
-                torchOn = torchOn,
-                compact = compact,
-                onToggleTorch = {
-                    camera?.let { c ->
-                        torchOn = !torchOn
-                        runCatching { c.cameraControl.enableTorch(torchOn) }
-                    }
-                }
+                compact = compact
             )
         }
 
@@ -349,6 +381,13 @@ fun DeviceScreen(vm: DeviceViewModel) {
                 state = state,
                 vertical = vertical,
                 compact = compact,
+                torchOn = torchOn,
+                onToggleTorch = {
+                    camera?.let { c ->
+                        torchOn = !torchOn
+                        runCatching { c.cameraControl.enableTorch(torchOn) }
+                    }
+                },
                 onShoot = { shoot() },
                 onSubmit = { vm.submit() },
                 onConfig = vm::openConfig,
@@ -399,11 +438,8 @@ fun DeviceScreen(vm: DeviceViewModel) {
 @Composable
 private fun SubDisplay(
     state: DeviceState,
-    torchOn: Boolean,
-    compact: Boolean,
-    onToggleTorch: () -> Unit
+    compact: Boolean
 ) {
-    val live = state.mode == DeviceMode.LIVE
     val hint = when (state.mode) {
         DeviceMode.LIVE -> if (state.frames.isEmpty()) "轻按拍摄 · 长按提交" else "轻按继续拍 · 长按现在提交"
         DeviceMode.CONFIG, DeviceMode.ARCHIVE, DeviceMode.IMPORT -> "再按一次对应按钮返回取景"
@@ -464,25 +500,6 @@ private fun SubDisplay(
         Spacer(Modifier.height(5.dp))
 
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                Modifier
-                    .clip(RoundedCornerShape(2.dp))
-                    .border(
-                        1.dp,
-                        if (torchOn) Amber else Brass.copy(alpha = 0.35f),
-                        RoundedCornerShape(2.dp)
-                    )
-                    .clickable(enabled = live, onClick = onToggleTorch)
-                    .padding(horizontal = 6.dp, vertical = 2.dp)
-            ) {
-                Text(
-                    if (torchOn) "灯 ON" else "灯 OFF",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (torchOn) Amber else Cream.copy(alpha = 0.45f),
-                    fontSize = 8.sp
-                )
-            }
-            Spacer(Modifier.width(8.dp))
             Text(
                 hint,
                 style = MaterialTheme.typography.bodySmall,
@@ -544,15 +561,27 @@ private fun ControlDeck(
     state: DeviceState,
     vertical: Boolean,
     compact: Boolean,
+    torchOn: Boolean,
+    onToggleTorch: () -> Unit,
     onShoot: () -> Unit,
     onSubmit: () -> Unit,
     onConfig: () -> Unit,
     onArchive: () -> Unit
 ) {
     val live = state.mode == DeviceMode.LIVE
-    val knobSize = if (compact) 100.dp else 116.dp
-    val buttonSize = if (compact) 54.dp else 66.dp
+    val buttonSize = if (compact) 54.dp else 64.dp
 
+    // 灯是独立圆钮，和右边三个硬件键同尺寸；注释文字跟着各自的圆钮走。
+    val lamp: @Composable () -> Unit = {
+        HardwareButton(
+            label = "灯",
+            sub = "LIGHT",
+            active = torchOn,
+            enabled = live,
+            size = buttonSize,
+            onClick = onToggleTorch
+        ) { color -> drawLamp(color, torchOn) }
+    }
     val config: @Composable () -> Unit = {
         HardwareButton(
             label = "配置",
@@ -572,21 +601,30 @@ private fun ControlDeck(
         ) { color -> drawArchive(color) }
     }
     val knob: @Composable () -> Unit = {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            Modifier.width(buttonSize),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
             ShutterKnob(
                 turns = state.frames.size,
                 frames = state.frames.size,
                 maxFrames = state.maxFrames,
                 enabled = live,
-                diameter = knobSize,
+                diameter = buttonSize,
                 onTap = onShoot,
                 onLongPress = onSubmit
             )
-            Spacer(Modifier.height(2.dp))
+            Spacer(Modifier.height(4.dp))
             Text(
-                if (state.frames.isEmpty()) "SHUTTER" else "长按提交 · ${state.frames.size} 帧",
+                "快门",
                 style = MaterialTheme.typography.labelSmall,
                 color = if (live) AmberDim else Cream.copy(alpha = 0.3f),
+                fontSize = 8.sp
+            )
+            Text(
+                "SHUTTER",
+                style = MaterialTheme.typography.labelSmall,
+                color = Cream.copy(alpha = 0.28f),
                 fontSize = 8.sp
             )
         }
@@ -598,6 +636,7 @@ private fun ControlDeck(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceEvenly
         ) {
+            lamp()
             config()
             knob()
             archive()
@@ -608,6 +647,7 @@ private fun ControlDeck(
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
+            lamp()
             config()
             knob()
             archive()
@@ -621,41 +661,79 @@ private fun HardwareButton(
     sub: String,
     active: Boolean,
     size: Dp,
+    enabled: Boolean = true,
     onClick: () -> Unit,
     glyph: DrawScope.(Color) -> Unit
 ) {
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+    val glyphColor = when {
+        active -> Amber
+        enabled -> Cream.copy(alpha = 0.62f)
+        else -> Cream.copy(alpha = 0.25f)
+    }
+    Column(
+        Modifier.width(size),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
         Box(
             Modifier
                 .size(size)
-                .clip(RoundedCornerShape(12.dp))
+                .clip(CircleShape)
                 .background(
                     Brush.verticalGradient(
                         listOf(Color(0xFF3B3428), Color(0xFF221D16))
                     )
                 )
-                .border(1.dp, if (active) Amber else DeckEdge, RoundedCornerShape(12.dp))
-                .clickable(onClick = onClick),
+                .border(1.dp, if (active) Amber else DeckEdge, CircleShape)
+                .clickable(enabled = enabled, onClick = onClick),
             contentAlignment = Alignment.Center
         ) {
             Canvas(Modifier.size(size * 0.4f)) {
-                glyph(if (active) Amber else Cream.copy(alpha = 0.62f))
+                glyph(glyphColor)
             }
         }
         Spacer(Modifier.height(4.dp))
         Text(
             label,
             style = MaterialTheme.typography.labelSmall,
-            color = if (active) Amber else Cream.copy(alpha = 0.6f),
+            color = if (active) Amber else Cream.copy(alpha = if (enabled) 0.6f else 0.25f),
             fontSize = 8.sp
         )
         Text(
             sub,
             style = MaterialTheme.typography.labelSmall,
-            color = Cream.copy(alpha = 0.28f),
+            color = Cream.copy(alpha = if (enabled) 0.28f else 0.14f),
             fontSize = 8.sp
         )
     }
+}
+
+private fun DrawScope.drawLamp(color: Color, on: Boolean) {
+    val w = size.width
+    val h = size.height
+    val cx = w * 0.5f
+    if (on) {
+        val r = w * 0.34f
+        repeat(8) { i ->
+            val a = Math.toRadians((i * 45).toDouble())
+            val cos = kotlin.math.cos(a).toFloat()
+            val sin = kotlin.math.sin(a).toFloat()
+            drawLine(
+                color.copy(alpha = 0.75f),
+                Offset(cx + cos * r, h * 0.40f + sin * r),
+                Offset(cx + cos * r * 1.45f, h * 0.40f + sin * r * 1.45f),
+                w * 0.055f,
+                StrokeCap.Round
+            )
+        }
+    }
+    drawCircle(
+        color = color,
+        radius = w * 0.23f,
+        center = Offset(cx, h * 0.40f),
+        style = Stroke(width = w * 0.10f)
+    )
+    drawLine(color, Offset(w * 0.37f, h * 0.66f), Offset(w * 0.63f, h * 0.66f), w * 0.09f, StrokeCap.Round)
+    drawLine(color, Offset(w * 0.42f, h * 0.78f), Offset(w * 0.58f, h * 0.78f), w * 0.08f, StrokeCap.Round)
 }
 
 private fun DrawScope.drawSliders(color: Color) {
