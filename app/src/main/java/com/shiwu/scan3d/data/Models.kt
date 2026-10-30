@@ -5,7 +5,8 @@ import org.json.JSONObject
 
 enum class Engine(val apiValue: String, val label: String, val hint: String) {
     TURBO("G1-Turbo", "极速", "约 1 分钟 · 日常扫描"),
-    STANDARD("G1", "精细", "约 5 分钟 · 高质量交付")
+    STANDARD("G1", "精细", "约 5 分钟 · 高质量交付"),
+    LOCAL("LOCAL", "本地", "离线重建 · 免联网免配额")
 }
 
 enum class Quality(val faceCount: Int, val label: String, val hint: String) {
@@ -23,7 +24,11 @@ data class AppSettings(
     val apiKey: String = "",
     val globalRegion: Boolean = false,
     val demoMode: Boolean = false,
-    val autoRotate: Boolean = true
+    val autoRotate: Boolean = true,
+    val onboarded: Boolean = false,
+    val engine: String = "G1-Turbo",
+    /** 非空时，本地引擎改为把底片发给这台机器上的 TripoSR 出模服务。 */
+    val localServiceUrl: String = ""
 ) {
     val baseUrl: String
         get() = if (globalRegion) "https://api.aholo.ai/global" else "https://api.aholo3d.cn"
@@ -86,6 +91,15 @@ data class AssetItem(
 enum class JobPhase { PREPARING, UPLOADING, SUBMITTING, GENERATING, DOWNLOADING, DONE, FAILED, CANCELED }
 
 data class JobUi(
+    val id: String = "",
+    val name: String = "",
+    val frames: List<String> = emptyList(),
+    val coverPath: String? = null,
+    val engine: String = "G1-Turbo",
+    val faceCount: Int = 200_000,
+    val demo: Boolean = false,
+    val seedX: Float = 0.5f,
+    val seedY: Float = 0.5f,
     val phase: JobPhase = JobPhase.PREPARING,
     val uploaded: Int = 0,
     val total: Int = 0,
@@ -100,6 +114,18 @@ data class JobUi(
         get() = phase == JobPhase.PREPARING || phase == JobPhase.UPLOADING ||
                 phase == JobPhase.SUBMITTING || phase == JobPhase.GENERATING ||
                 phase == JobPhase.DOWNLOADING
+
+    val phaseLabel: String
+        get() = when (phase) {
+            JobPhase.PREPARING -> "准备中"
+            JobPhase.UPLOADING -> "上传底片"
+            JobPhase.SUBMITTING -> "提交任务"
+            JobPhase.GENERATING -> "重建中"
+            JobPhase.DOWNLOADING -> "写入本地"
+            JobPhase.DONE -> "完成"
+            JobPhase.FAILED -> "失败"
+            JobPhase.CANCELED -> "已中止"
+        }
 }
 
 data class ConnectionProbe(

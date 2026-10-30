@@ -12,6 +12,7 @@ val localProps = Properties().apply {
     if (f.exists()) f.inputStream().use { load(it) }
 }
 val aholoKey: String = (localProps.getProperty("aholo.api.key") ?: "").trim()
+val subjectEnabled = !project.hasProperty("noSubject")
 
 android {
     namespace = "com.shiwu.scan3d"
@@ -24,10 +25,13 @@ android {
         versionCode = 1
         versionName = "1.0"
         buildConfigField("String", "DEFAULT_API_KEY", "\"$aholoKey\"")
+        buildConfigField("boolean", "SUBJECT_ENABLED", subjectEnabled.toString())
 
         // MediaPipe 的 native 库每个 ABI 各带一份，只保留真机在用的 64 位 ARM。
         ndk {
             abiFilters += "arm64-v8a"
+            // 本机 x86 模拟器调试用；正式包不带。
+            if (project.hasProperty("withX86")) abiFilters += "x86"
         }
     }
 
@@ -90,6 +94,12 @@ dependencies {
 
     // 类别无关的主体分割（MagicTouch，只用来取主体外接框）
     implementation("com.google.mediapipe:tasks-vision:0.10.21")
+
+    // 本地引擎：OpenCV 做特征匹配与相机位姿估计（增量式 SfM）
+    implementation("org.opencv:opencv:4.10.0")
+
+    // 端上离线出模：TripoSR 拆成两张 ONNX 图，fp16 权重放在应用私有目录
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.20.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

@@ -11,6 +11,7 @@ import com.google.mediapipe.tasks.components.containers.NormalizedKeypoint
 import com.google.mediapipe.tasks.core.BaseOptions
 import com.google.mediapipe.tasks.core.Delegate
 import com.google.mediapipe.tasks.vision.interactivesegmenter.InteractiveSegmenter
+import com.shiwu.scan3d.BuildConfig
 import java.io.Closeable
 import java.nio.ByteOrder
 
@@ -28,6 +29,23 @@ data class SubjectBox(
 ) {
     val width: Float get() = right - left
     val height: Float get() = bottom - top
+
+    fun moved(dx: Float, dy: Float): SubjectBox =
+        copy(left = left + dx, top = top + dy, right = right + dx, bottom = bottom + dy)
+}
+
+/** 一帧的置信度 mask：subject 像素 >= MASK_THRESHOLD。 */
+class MaskData internal constructor(
+    val width: Int,
+    val height: Int,
+    internal val floats: java.nio.FloatBuffer
+) {
+    /** 1 = 主体，0 = 背景；越界按背景处理。 */
+    fun at(x: Int, y: Int): Int {
+        if (x < 0 || y < 0 || x >= width || y >= height) return 0
+        val v = floats.get(y * width + x)
+        return if (v >= 0.5f) 1 else 0
+    }
 }
 
 /**
@@ -60,6 +78,9 @@ class SubjectSegmenter(context: Context) : Closeable {
     private var lockFrames = 0
     private var lastLogAt = 0L
 
+    val currentSeed: Pair<Float, Float>
+        get() = seedX to seedY
+
     fun setSeed(nx: Float, ny: Float) {
         seedX = nx.coerceIn(0.01f, 0.99f)
         seedY = ny.coerceIn(0.01f, 0.99f)
@@ -71,38 +92,11 @@ class SubjectSegmenter(context: Context) : Closeable {
      * 同步跑一次分割，只返回主体外接框。调用方需保证在单一后台线程上调用。
      */
     fun analyze(bitmap: Bitmap): SubjectBox? {
-        val segmenter = runCatching { lazySegmenter.value }.getOrElse { error ->
-            Log.e(TAG, "segmenter init failed", error)
-            return null
-        }
         val started = SystemClock.elapsedRealtime()
-        val mpImage = BitmapImageBuilder(bitmap).build()
-        var masks: List<MPImage>? = null
-
-        val fresh = try {
-            // 0.10.21 的 Java SDK 漏了 point.normalized(true)，ROI 实际按像素解释；
-            // 直接传当前输入图的像素坐标，否则点永远落在左上角。
-            val roi = InteractiveSegmenter.RegionOfInterest.create(
-                NormalizedKeypoint.create(
-                    seedX * bitmap.width,
-                    seedY * bitmap.height
-                )
-            )
-            val result = segmenter.segment(mpImage, roi)
-            val list = result.confidenceMasks().orElse(null) ?: return null
-            masks = list
-            val chosen = list[pickMaskIndex(list)]
-            boxFromMask(chosen, bitmap.width.toFloat() / bitmap.height.toFloat())
-        } catch (t: Throwable) {
-            Log.w(TAG, "segment failed", t)
-            null
-        } finally {
-            masks?.forEach { runCatching { it.close() } }
-            mpImage.close()
-        }
-
+        val mask = runSegmentation(bitmap, seedX, seedY) ?: return null
+        val box = boxFromMask(mask, bitmap.width.toFloat() / bitmap.height.toFloat(), seedX, seedY)
+            ?: return null
         val elapsed = SystemClock.elapsedRealtime() - started
-        val box = fresh ?: return null
         val now = SystemClock.elapsedRealtime()
         if (now - lastLogAt > 1500) {
             lastLogAt = now
@@ -115,13 +109,71 @@ class SubjectSegmenter(context: Context) : Closeable {
         return smooth(box)
     }
 
+    /**
+     * 输出整帧的 mask（主体=不透明白，背景=透明），给离线重建做剪影雕刻用。
+     * [sx]/[sy] 是归一化种子点；传空则用当前种子。
+     */
+    fun segmentMask(bitmap: Bitmap, sx: Float? = null, sy: Float? = null): Bitmap? {
+        val mx = (sx ?: seedX).coerceIn(0.01f, 0.99f)
+        val my = (sy ?: seedY).coerceIn(0.01f, 0.99f)
+        val mask = runSegmentation(bitmap, mx, my) ?: return null
+
+        val out = Bitmap.createBitmap(mask.width, mask.height, Bitmap.Config.ARGB_8888)
+        val pixels = IntArray(mask.width * mask.height)
+        for (y in 0 until mask.height) {
+            for (x in 0 until mask.width) {
+                pixels[y * mask.width + x] =
+                    if (mask.at(x, y) == 1) 0xFFFFFFFF.toInt() else 0x00000000
+            }
+        }
+        out.setPixels(pixels, 0, mask.width, 0, 0, mask.width, mask.height)
+        return out
+    }
+
+    private fun runSegmentation(bitmap: Bitmap, sx: Float, sy: Float): MaskData? {
+        if (!BuildConfig.SUBJECT_ENABLED) return null
+        val segmenter = runCatching { lazySegmenter.value }.getOrElse { error ->
+            Log.e(TAG, "segmenter init failed", error)
+            return null
+        }
+        val mpImage = BitmapImageBuilder(bitmap).build()
+        var masks: List<MPImage>? = null
+
+        return try {
+            // 0.10.21 的 Java SDK 漏了 point.normalized(true)，ROI 实际按像素解释；
+            // 直接传当前输入图的像素坐标，否则点永远落在左上角。
+            val roi = InteractiveSegmenter.RegionOfInterest.create(
+                NormalizedKeypoint.create(sx * bitmap.width, sy * bitmap.height)
+            )
+            val result = segmenter.segment(mpImage, roi)
+            val list = result.confidenceMasks().orElse(null) ?: return null
+            masks = list
+            val chosen = list[pickMaskIndex(list, sx, sy)]
+
+            val w = chosen.width
+            val h = chosen.height
+            val raw = ByteBufferExtractor.extract(chosen).duplicate()
+            raw.rewind()
+            raw.order(ByteOrder.nativeOrder())
+            val floats = raw.asFloatBuffer()
+            if (floats.remaining() < w * h) return null
+            MaskData(w, h, floats)
+        } catch (t: Throwable) {
+            Log.w(TAG, "segment failed", t)
+            null
+        } finally {
+            masks?.forEach { runCatching { it.close() } }
+            mpImage.close()
+        }
+    }
+
     /** 多张置信度 mask 时，挑种子点处置信度最高的那张。 */
-    private fun pickMaskIndex(masks: List<MPImage>): Int {
+    private fun pickMaskIndex(masks: List<MPImage>, sx: Float, sy: Float): Int {
         if (masks.size <= 1) return 0
         var best = 0
         var bestValue = -1f
         masks.forEachIndexed { index, mask ->
-            val value = seedValue(mask)
+            val value = seedValue(mask, sx, sy)
             if (value > bestValue) {
                 bestValue = value
                 best = index
@@ -130,12 +182,12 @@ class SubjectSegmenter(context: Context) : Closeable {
         return best
     }
 
-    private fun seedValue(mask: MPImage): Float {
+    private fun seedValue(mask: MPImage, sx: Float, sy: Float): Float {
         val w = mask.width
         val h = mask.height
         if (w <= 0 || h <= 0) return -1f
-        val x = (seedX * (w - 1)).toInt().coerceIn(0, w - 1)
-        val y = (seedY * (h - 1)).toInt().coerceIn(0, h - 1)
+        val x = (sx * (w - 1)).toInt().coerceIn(0, w - 1)
+        val y = (sy * (h - 1)).toInt().coerceIn(0, h - 1)
         val raw = ByteBufferExtractor.extract(mask).duplicate()
         raw.rewind()
         raw.order(ByteOrder.nativeOrder())
@@ -144,22 +196,15 @@ class SubjectSegmenter(context: Context) : Closeable {
         return if (index < floats.remaining()) floats.get(index) else -1f
     }
 
-    private fun boxFromMask(mask: MPImage, aspect: Float): SubjectBox? {
+    private fun boxFromMask(mask: MaskData, aspect: Float, sx: Float, sy: Float): SubjectBox? {
         val w = mask.width
         val h = mask.height
         if (w <= 0 || h <= 0) return null
-
-        val raw = ByteBufferExtractor.extract(mask).duplicate()
-        raw.rewind()
-        raw.order(ByteOrder.nativeOrder())
-        val floats = raw.asFloatBuffer()
         val total = w * h
-        if (floats.remaining() < total) return null
 
         // 种子点所在的连通域才是“要拍的那个物体”；阈值边缘的零散像素则整体丢弃。
-        val sx = seedX * (w - 1)
-        val sy = seedY * (h - 1)
-        val seedIdx = sy.toInt().coerceIn(0, h - 1) * w + sx.toInt().coerceIn(0, w - 1)
+        val seedIdx = (sy * (h - 1)).toInt().coerceIn(0, h - 1) * w +
+                (sx * (w - 1)).toInt().coerceIn(0, w - 1)
         val seen = BooleanArray(total)
         val queue = IntArray(total)
         var nearest: Component? = null
@@ -167,7 +212,7 @@ class SubjectSegmenter(context: Context) : Closeable {
         var seedComponent: Component? = null
 
         for (start in 0 until total) {
-            if (seen[start] || floats.get(start) < MASK_THRESHOLD) continue
+            if (seen[start] || mask.at(start % w, start / w) != 1) continue
             var head = 0
             var tail = 0
             queue[tail++] = start
@@ -192,28 +237,28 @@ class SubjectSegmenter(context: Context) : Closeable {
 
                 if (x > 0) {
                     val q = p - 1
-                    if (!seen[q] && floats.get(q) >= MASK_THRESHOLD) {
+                    if (!seen[q] && mask.at(q % w, q / w) == 1) {
                         seen[q] = true
                         queue[tail++] = q
                     }
                 }
                 if (x < w - 1) {
                     val q = p + 1
-                    if (!seen[q] && floats.get(q) >= MASK_THRESHOLD) {
+                    if (!seen[q] && mask.at(q % w, q / w) == 1) {
                         seen[q] = true
                         queue[tail++] = q
                     }
                 }
                 if (y > 0) {
                     val q = p - w
-                    if (!seen[q] && floats.get(q) >= MASK_THRESHOLD) {
+                    if (!seen[q] && mask.at(q % w, q / w) == 1) {
                         seen[q] = true
                         queue[tail++] = q
                     }
                 }
                 if (y < h - 1) {
                     val q = p + w
-                    if (!seen[q] && floats.get(q) >= MASK_THRESHOLD) {
+                    if (!seen[q] && mask.at(q % w, q / w) == 1) {
                         seen[q] = true
                         queue[tail++] = q
                     }
@@ -226,8 +271,8 @@ class SubjectSegmenter(context: Context) : Closeable {
             } else {
                 // 种子点没落在任何区域里（高光/缝隙）时，退到离它最近的连通域，
                 // 而不是全画面最大的那块——那块往往是手或桌面。
-                val dx = maxOf(0f, maxOf(minX - sx, sx - maxX))
-                val dy = maxOf(0f, maxOf(minY - sy, sy - maxY))
+                val dx = maxOf(0f, maxOf(minX - sx * w, sx * w - maxX))
+                val dy = maxOf(0f, maxOf(minY - sy * h, sy * h - maxY))
                 val dist2 = dx * dx + dy * dy
                 if (dist2 < nearestDist2) {
                     nearestDist2 = dist2
@@ -305,7 +350,7 @@ class SubjectSegmenter(context: Context) : Closeable {
     private companion object {
         const val TAG = "SubjectSegmenter"
         const val MODEL_ASSET = "magic_touch.tflite"
-        const val MASK_THRESHOLD = 0.65f
+        const val MASK_THRESHOLD = 0.5f
         const val MIN_COVERAGE = 0.004f
         const val MAX_COVERAGE = 0.6f
         const val MAX_SEED_DIST = 0.08f

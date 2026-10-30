@@ -19,6 +19,9 @@ class SettingsStore(private val context: Context) {
         val globalRegion = booleanPreferencesKey("global_region")
         val demoMode = booleanPreferencesKey("demo_mode")
         val autoRotate = booleanPreferencesKey("auto_rotate")
+        val onboarded = booleanPreferencesKey("onboarded")
+        val engine = stringPreferencesKey("engine")
+        val localServiceUrl = stringPreferencesKey("local_service_url")
     }
 
     suspend fun read(): AppSettings {
@@ -32,7 +35,10 @@ class SettingsStore(private val context: Context) {
             apiKey = key,
             globalRegion = prefs[Keys.globalRegion] ?: false,
             demoMode = prefs[Keys.demoMode] ?: false,
-            autoRotate = prefs[Keys.autoRotate] ?: true
+            autoRotate = prefs[Keys.autoRotate] ?: true,
+            onboarded = prefs[Keys.onboarded] ?: false,
+            engine = prefs[Keys.engine] ?: "G1-Turbo",
+            localServiceUrl = prefs[Keys.localServiceUrl] ?: ""
         )
     }
 
@@ -42,6 +48,8 @@ class SettingsStore(private val context: Context) {
             prefs[Keys.globalRegion] = settings.globalRegion
             prefs[Keys.demoMode] = settings.demoMode
             prefs[Keys.autoRotate] = settings.autoRotate
+            prefs[Keys.onboarded] = settings.onboarded
+            prefs[Keys.engine] = settings.engine
         }
     }
 }

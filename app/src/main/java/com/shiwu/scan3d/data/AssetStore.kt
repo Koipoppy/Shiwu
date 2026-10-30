@@ -31,6 +31,7 @@ class AssetStore(private val context: Context) {
         if (target != null) {
             runCatching { File(target.modelPath).delete() }
             runCatching { File(context.filesDir, "models/${target.id}.glb").delete() }
+            runCatching { target.coverPath?.let { File(it).delete() } }
         }
         write(current.filterNot { it.id == id })
     }
