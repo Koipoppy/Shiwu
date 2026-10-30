@@ -1,7 +1,5 @@
 <div align="center">
 
-<h1>拾物</h1>
-
 <img src="docs/screenshots/banner.png" width="880" alt="拾物">
 
 **对着实物拍一圈，它就在手机里变成 3D 模型。**
