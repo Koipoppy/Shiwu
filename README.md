@@ -1,12 +1,22 @@
-# 拾物
-
 <div align="center">
+
+<h1>拾物</h1>
 
 <img src="docs/screenshots/banner.png" width="880" alt="拾物">
 
 **对着实物拍一圈，它就在手机里变成 3D 模型。**
 
 <sub>Android 8.0+ · arm64-v8a · 3D 重建由群核 Aholo Lux3D 提供 · 2026 黑客松参赛作品</sub>
+
+<br><br>
+
+<img src="https://img.shields.io/badge/Kotlin-2B251C?style=flat-square&logo=kotlin&logoColor=FFB454" alt="Kotlin">
+<img src="https://img.shields.io/badge/Jetpack%20Compose-2B251C?style=flat-square&logo=jetpackcompose&logoColor=FFB454" alt="Jetpack Compose">
+<img src="https://img.shields.io/badge/CameraX-2B251C?style=flat-square&logo=android&logoColor=FFB454" alt="CameraX">
+<img src="https://img.shields.io/badge/MediaPipe-2B251C?style=flat-square&logo=google&logoColor=FFB454" alt="MediaPipe">
+<img src="https://img.shields.io/badge/OkHttp-2B251C?style=flat-square&logo=square&logoColor=FFB454" alt="OkHttp">
+<img src="https://img.shields.io/badge/%3Cmodel--viewer%3E-2B251C?style=flat-square&logo=threedotjs&logoColor=FFB454" alt="model-viewer">
+<img src="https://img.shields.io/badge/Lux3D-2B251C?style=flat-square&logo=threed&logoColor=FFB454" alt="Lux3D">
 
 </div>
 
@@ -112,6 +122,21 @@
 - 深色物体紧贴线缆、支架时，自动框选可能连成一片，框会偏大——换个背景或点一下物体主体即可。
 - 同一账号的并发任务有上限（免费额度 5 个），排队时会给出中文提示。
 </details>
+
+## 技术栈
+
+| 层 | 用的是什么 |
+|:---|:---|
+| 语言 / UI | Kotlin 2.2.21、Jetpack Compose（BOM 2026.06.01）、Material 3 |
+| 相机 | CameraX 1.4.1：预览、拍照、手电筒 |
+| 主体框选 | MediaPipe Tasks Vision 0.10.21（MagicTouch 分割模型，端内推理，类别无关） |
+| 图像预处理 | ExifInterface 摆正 + 机内压缩到长边 1280 |
+| 机内重建（可选） | 纯 Kotlin Surface Nets + 自写 GLB 写出，OpenCV / ONNX Runtime 辅助 |
+| 3D 重建（云端） | 群核 Aholo Lux3D `img-to-3d`（G1 / G1-Turbo），PBR 材质，输出 GLB |
+| 网络 | OkHttp 4.12：Lux3D 网关 + OUS 文件直传 |
+| 3D 预览 | WebView + 本地打包的 `<model-viewer>`（不依赖外网） |
+| 图片加载 / 存储 | Coil 2.7、DataStore Preferences 1.1.1、应用私有目录 + `library.json` |
+| 构建 | Gradle 8.14.3 + AGP 8.13.2，minSdk 26 / targetSdk 35 / compileSdk 36 |
 
 ## 从源码构建
 
