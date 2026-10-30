@@ -8,6 +8,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -35,6 +36,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.shiwu.scan3d.ui.theme.Amber
+import com.shiwu.scan3d.ui.theme.BrassDark
 import com.shiwu.scan3d.ui.theme.Cream
 import com.shiwu.scan3d.ui.theme.Glass
 import com.shiwu.scan3d.ui.theme.GlassEdge
@@ -82,6 +84,8 @@ fun CrtScreen(
                     )
                 )
             )
+            // 外沿发丝边：让取景屏的外框和上方子显示屏对齐到同一宽度
+            .border(1.dp, BrassDark.copy(alpha = 0.65f), RoundedCornerShape(if (compact) 20.dp else 26.dp))
             .padding(if (compact) 7.dp else 9.dp)
     ) {
         Box(

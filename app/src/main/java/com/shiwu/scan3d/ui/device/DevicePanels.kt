@@ -53,8 +53,10 @@ import com.shiwu.scan3d.ui.theme.Amber
 import com.shiwu.scan3d.ui.theme.AmberDim
 import com.shiwu.scan3d.ui.theme.Brass
 import com.shiwu.scan3d.ui.theme.Cream
-import com.shiwu.scan3d.ui.theme.glossy
+import com.shiwu.scan3d.ui.theme.Deck
 import com.shiwu.scan3d.ui.theme.SignalRed
+import com.shiwu.scan3d.ui.theme.glossy
+import com.shiwu.scan3d.ui.theme.glow
 import com.shiwu.scan3d.util.humanSize
 import java.io.File
 
@@ -96,19 +98,18 @@ fun RetroRow(
     sub: String,
     value: String,
     valueColor: Color = Amber,
+    index: String? = null,
     onClick: (() -> Unit)? = null
 ) {
-    val interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
-    
+    val active = pressed && onClick != null
+
     Row(
         Modifier
             .fillMaxWidth()
-            .clip(rowShape)
-            .background(
-                if (pressed && onClick != null) Color(0xFF1C1810) 
-                else Color.Transparent
-            )
+            .clip(ChamferShape(5.dp))
+            .background(if (active) Amber.copy(alpha = 0.07f) else Color.Transparent)
             .then(
                 if (onClick != null) Modifier.clickable(
                     interactionSource = interactionSource,
@@ -116,25 +117,46 @@ fun RetroRow(
                     onClick = onClick
                 ) else Modifier
             )
-            .padding(horizontal = 8.dp, vertical = 4.dp),
+            .padding(horizontal = 8.dp, vertical = 2.5.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        if (index != null) {
+            Text(
+                index,
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp, letterSpacing = 0.5.sp),
+                color = AmberDim.copy(alpha = if (active) 0.95f else 0.6f),
+                modifier = Modifier.width(17.dp)
+            )
+        }
         Column(Modifier.weight(1f)) {
             Text(label, style = MaterialTheme.typography.titleSmall, color = Cream)
             Text(
                 sub,
-                style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp, letterSpacing = 1.6.sp),
-                color = AmberDim
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 7.5.sp, letterSpacing = 1.8.sp),
+                color = AmberDim.copy(alpha = 0.72f)
             )
         }
+        ReadoutChip(value, valueColor)
+    }
+}
+
+/** 右侧的框式读数：细黄铜框 + 同色余辉，像仪表上的一块翻牌显示。 */
+@Composable
+private fun ReadoutChip(text: String, color: Color) {
+    val shape = ChamferShape(4.dp)
+    Box(
+        Modifier
+            .clip(shape)
+            .background(color.copy(alpha = if (color == Amber) 0.10f else 0.04f))
+            .border(0.8.dp, color.copy(alpha = 0.38f), shape)
+            .padding(horizontal = 8.dp, vertical = 2.dp)
+    ) {
         Text(
-            value,
-            style = if (valueColor == Amber) {
-                MaterialTheme.typography.titleSmall.glossy()
-            } else {
-                MaterialTheme.typography.titleSmall
-            },
-            color = valueColor,
+            text,
+            style = MaterialTheme.typography.labelMedium
+                .copy(fontSize = 10.sp, letterSpacing = 1.sp)
+                .glow(color, 8f, 0.45f),
+            color = color,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
         )
@@ -143,25 +165,7 @@ fun RetroRow(
 
 @Composable
 fun DottedDivider() {
-    Canvas(
-        Modifier
-            .fillMaxWidth()
-            .height(1.dp)
-            .padding(horizontal = 8.dp)
-    ) {
-        val dash = 2.dp.toPx()
-        val gap = 3.dp.toPx()
-        var x = 0f
-        while (x < size.width) {
-            drawLine(
-                color = Amber.copy(alpha = 0.22f),
-                start = androidx.compose.ui.geometry.Offset(x, 0f),
-                end = androidx.compose.ui.geometry.Offset(x + dash, 0f),
-                strokeWidth = 1f
-            )
-            x += dash + gap
-        }
-    }
+    HairlineRule()
 }
 
 // ---------------------------------------------------------------- CONFIG
@@ -193,11 +197,10 @@ fun ConfigPanel(
     Column(
         Modifier
             .fillMaxSize()
-            .padding(start = 14.dp, end = 14.dp, top = 46.dp, bottom = 14.dp)
+            .padding(start = 14.dp, end = 14.dp, top = 46.dp, bottom = 18.dp)
     ) {
         PanelTitle("配置 / MODEL CONFIG", "SYSTEM PARAMETERS")
-
-        Spacer(Modifier.height(6.dp))
+        HairlineRule(Modifier.padding(top = 6.dp))
 
         Column(
             Modifier
@@ -205,17 +208,18 @@ fun ConfigPanel(
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
         ) {
-            RetroRow("生成引擎", "ENGINE", engineLabel, onClick = onCycleEngine)
+            RetroRow("生成引擎", "ENGINE", engineLabel, index = "01", onClick = onCycleEngine)
             DottedDivider()
-            RetroRow("模型精度", "FIDELITY", qualityLabel, onClick = onCycleQuality)
+            RetroRow("模型精度", "FIDELITY", qualityLabel, index = "02", onClick = onCycleQuality)
             DottedDivider()
-            RetroRow("接口区域", "REGION", regionLabel, onClick = onToggleRegion)
+            RetroRow("接口区域", "REGION", regionLabel, index = "03", onClick = onToggleRegion)
             DottedDivider()
             RetroRow(
                 "演示模式",
                 "DEMO MODE",
                 if (demoMode) "ON" else "OFF",
                 valueColor = if (demoMode) Amber else Cream.copy(alpha = 0.5f),
+                index = "04",
                 onClick = onToggleDemo
             )
             DottedDivider()
@@ -224,6 +228,7 @@ fun ConfigPanel(
                 "TRIPO SERVICE",
                 serviceLabel,
                 valueColor = if (serviceOn) Amber else Cream.copy(alpha = 0.5f),
+                index = "05",
                 onClick = onEditService
             )
             DottedDivider()
@@ -232,17 +237,25 @@ fun ConfigPanel(
                 "LINK TEST",
                 probeText,
                 valueColor = if (probeOk) Amber else Cream.copy(alpha = 0.55f),
+                index = "06",
                 onClick = onTest
             )
             DottedDivider()
-            RetroRow("导入底片", "IMPORT FRAMES", "$frames / 12", onClick = onOpenImport)
+            RetroRow("导入底片", "IMPORT FRAMES", "$frames / 12", index = "07", onClick = onOpenImport)
             DottedDivider()
-            RetroRow("操作引导", "FIELD MANUAL", "VIEW", onClick = onOpenGuide)
+            RetroRow("操作引导", "FIELD MANUAL", "VIEW", index = "08", onClick = onOpenGuide)
             DottedDivider()
-            RetroRow("清空底片", "CLEAR FRAMES", "CLEAR", onClick = onClearFrames)
+            RetroRow(
+                "清空底片",
+                "CLEAR FRAMES",
+                "CLEAR",
+                valueColor = SignalRed.copy(alpha = 0.85f),
+                index = "09",
+                onClick = onClearFrames
+            )
         }
 
-        Spacer(Modifier.height(8.dp))
+        Spacer(Modifier.height(6.dp))
         ServiceBay(hasKey = hasKey, onEditKey = onEditKey, onOpenSite = onOpenKeySite)
     }
 }
@@ -250,47 +263,56 @@ fun ConfigPanel(
 /** 配置页底部的“服务舱”：接口密钥单独放在这里，和日常参数分开。 */
 @Composable
 private fun ServiceBay(hasKey: Boolean, onEditKey: () -> Unit, onOpenSite: () -> Unit) {
+    val shape = ChamferShape(6.dp)
     Column(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(4.dp))
-            .background(Color(0xFF0C0F0B))
-            .border(1.dp, Brass.copy(alpha = 0.55f), RoundedCornerShape(4.dp))
-            .padding(horizontal = 8.dp, vertical = 7.dp)
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Canvas(Modifier.size(18.dp)) {
-                val c = Offset(size.width / 2f, size.height / 2f)
-                drawCircle(AmberDim, size.minDimension * 0.30f, c)
-                drawRect(
-                    color = AmberDim,
-                    topLeft = Offset(c.x - size.width * 0.08f, c.y),
-                    size = Size(size.width * 0.16f, size.height * 0.32f)
-                )
-            }
-            Spacer(Modifier.width(7.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    "服务舱 / SERVICE BAY",
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp, letterSpacing = 1.6.sp),
-                    color = AmberDim
-                )
-                Text(
-                    if (hasKey) "接口密钥已装载" else "接口密钥未装载",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (hasKey) Cream.copy(alpha = 0.8f) else SignalRed
-                )
-            }
-            Text(
-                if (hasKey) "SET" else "MISSING",
-                style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp, letterSpacing = 1.2.sp),
-                color = if (hasKey) Amber else SignalRed
+            .clip(shape)
+            .background(
+                Brush.verticalGradient(listOf(Color(0xFF11150F), Color(0xFF080A07)))
             )
-        }
-        Spacer(Modifier.height(6.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            PanelAction("写入密钥", onClick = onEditKey, modifier = Modifier.weight(1f))
-            PanelAction("获取密钥 ↗", onClick = onOpenSite, modifier = Modifier.weight(1f))
+            .border(1.dp, Brass.copy(alpha = 0.5f), shape)
+    ) {
+        HazardStripe(height = 3.dp)
+        Column(Modifier.padding(horizontal = 8.dp, vertical = 7.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Canvas(Modifier.size(18.dp)) {
+                    val c = Offset(size.width / 2f, size.height / 2f)
+                    drawCircle(AmberDim, size.minDimension * 0.30f, c)
+                    drawRect(
+                        color = AmberDim,
+                        topLeft = Offset(c.x - size.width * 0.08f, c.y),
+                        size = Size(size.width * 0.16f, size.height * 0.32f)
+                    )
+                }
+                Spacer(Modifier.width(7.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "服务舱 / SERVICE BAY",
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 7.5.sp, letterSpacing = 1.8.sp),
+                        color = AmberDim
+                    )
+                    Text(
+                        if (hasKey) "接口密钥已装载" else "接口密钥未装载",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (hasKey) Cream.copy(alpha = 0.85f) else SignalRed
+                    )
+                }
+                LedDot(on = hasKey, color = if (hasKey) Amber else SignalRed, diameter = 6.dp)
+                Spacer(Modifier.width(5.dp))
+                Text(
+                    if (hasKey) "SET" else "MISSING",
+                    style = MaterialTheme.typography.labelSmall
+                        .copy(fontSize = 8.sp, letterSpacing = 1.2.sp)
+                        .glow(if (hasKey) Amber else SignalRed, 8f, 0.4f),
+                    color = if (hasKey) Amber else SignalRed
+                )
+            }
+            Spacer(Modifier.height(6.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                PanelAction("写入密钥", onClick = onEditKey, modifier = Modifier.weight(1f))
+                PanelAction("获取密钥 ↗", onClick = onOpenSite, modifier = Modifier.weight(1f))
+            }
         }
     }
 }
@@ -311,17 +333,24 @@ fun ArchivePanel(
     )
     val total = assets.size + orderedJobs.size
 
-    Column(Modifier.fillMaxSize().padding(start = 12.dp, end = 12.dp, top = 46.dp, bottom = 14.dp)) {
+    Column(Modifier.fillMaxSize().padding(start = 12.dp, end = 12.dp, top = 46.dp, bottom = 18.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             PanelTitle("资产仓库 / ARCHIVE", "LOCAL STORAGE")
             Spacer(Modifier.weight(1f))
             Text(
-                "$total",
-                style = MaterialTheme.typography.titleLarge,
+                "%02d".format(total),
+                style = MaterialTheme.typography.titleLarge.glossy(),
                 color = Amber
             )
+            Spacer(Modifier.width(4.dp))
+            Text(
+                "REC",
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 7.5.sp, letterSpacing = 1.6.sp),
+                color = AmberDim.copy(alpha = 0.7f)
+            )
         }
-        Spacer(Modifier.height(10.dp))
+        HairlineRule(Modifier.padding(top = 6.dp))
+        Spacer(Modifier.height(8.dp))
 
         if (total == 0) {
             Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
@@ -377,12 +406,13 @@ private fun JobCard(
         failed -> SignalRed
         else -> AmberDim
     }
+    val cardShape = ChamferShape(6.dp)
     Column(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(4.dp))
-            .border(1.dp, accent.copy(alpha = 0.55f), RoundedCornerShape(4.dp))
-            .background(Color(0xFF0E110D))
+            .clip(cardShape)
+            .background(Brush.verticalGradient(listOf(Color(0xFF14170F), Color(0xFF0A0D09))))
+            .border(1.dp, accent.copy(alpha = 0.5f), cardShape)
             .padding(6.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -415,31 +445,28 @@ private fun JobCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Text(
-                    buildString {
-                        append(job.phaseLabel)
-                        append(" · ")
-                        append(job.frames.size)
-                        append(" 帧")
-                        job.taskId?.let { append(" · #").append(it) }
-                    },
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp, letterSpacing = 1.sp),
-                    color = accent
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    LedDot(on = job.isActive, color = accent, diameter = 5.dp)
+                    Spacer(Modifier.width(5.dp))
+                    Text(
+                        buildString {
+                            append(job.phaseLabel)
+                            append(" · ")
+                            append(job.frames.size)
+                            append(" 帧")
+                            job.taskId?.let { append(" · #").append(it) }
+                        },
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp, letterSpacing = 1.sp),
+                        color = accent
+                    )
+                }
                 if (job.isActive) {
-                    Spacer(Modifier.height(4.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                        val segments = 18
-                        val filled = (job.progress * segments).toInt()
-                        repeat(segments) { i ->
-                            Box(
-                                Modifier
-                                    .weight(1f)
-                                    .height(4.dp)
-                                    .background(if (i < filled) Amber else Cream.copy(alpha = 0.12f))
-                            )
-                        }
-                    }
+                    Spacer(Modifier.height(5.dp))
+                    SegmentBar(
+                        filled = (job.progress * 18).toInt(),
+                        total = 18,
+                        height = 4.dp
+                    )
                     Text(
                         "${job.message}  ${(job.progress * 100).toInt()}%",
                         style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp),
@@ -481,19 +508,21 @@ private fun JobCard(
 
 @Composable
 private fun ArchiveCell(asset: AssetItem, onClick: () -> Unit) {
+    val cardShape = ChamferShape(6.dp)
     Column(
         Modifier
-            .clip(RoundedCornerShape(4.dp))
-            .border(1.dp, Brass.copy(alpha = 0.35f), RoundedCornerShape(4.dp))
+            .clip(cardShape)
+            .background(Brush.verticalGradient(listOf(Color(0xFF171A14), Color(0xFF0D100C))))
+            .border(0.9.dp, Brass.copy(alpha = 0.38f), cardShape)
             .clickable(onClick = onClick)
-            .padding(4.dp)
+            .padding(3.dp)
     ) {
         Box(
             Modifier
                 .fillMaxWidth()
                 .aspectRatio(1f)
-                .clip(RoundedCornerShape(2.dp))
-                .background(Color(0xFF11150F))
+                .clip(ChamferShape(4.dp))
+                .background(Color(0xFF0A0D09))
         ) {
             val cover = asset.coverPath
             if (cover != null && File(cover).exists()) {
@@ -508,36 +537,61 @@ private fun ArchiveCell(asset: AssetItem, onClick: () -> Unit) {
                     Text("3D", style = MaterialTheme.typography.titleMedium, color = AmberDim)
                 }
             }
+            // 终端里的读数感：扫描线 + 一层压暗的渐变
+            ScanlineOverlay(Modifier.fillMaxSize(), step = 4.dp, alpha = 0.15f)
             Box(
                 Modifier
                     .fillMaxSize()
                     .background(
                         Brush.verticalGradient(
-                            listOf(Color.Transparent, Color.Black.copy(alpha = 0.65f))
+                            listOf(Color.Transparent, Color.Black.copy(alpha = 0.72f))
                         )
                     )
             )
             Text(
                 asset.name,
-                style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp),
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 7.5.sp, letterSpacing = 0.3.sp),
                 color = Cream,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.align(Alignment.BottomStart).padding(4.dp)
             )
-            Text(
-                asset.version,
-                style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp),
-                color = Amber,
-                modifier = Modifier.align(Alignment.TopEnd).padding(4.dp)
-            )
+            // 版本挂牌
+            Box(
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(3.dp)
+                    .clip(ChamferShape(2.dp))
+                    .background(Color.Black.copy(alpha = 0.66f))
+                    .border(0.7.dp, Brass.copy(alpha = 0.42f), ChamferShape(2.dp))
+                    .padding(horizontal = 4.dp, vertical = 1.dp)
+            ) {
+                Text(
+                    asset.version,
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 7.sp, letterSpacing = 0.6.sp),
+                    color = Amber
+                )
+            }
         }
         Spacer(Modifier.height(3.dp))
-        Text(
-            "${humanSize(asset.sizeBytes)} · ${asset.sourceCount} 帧",
-            style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp, letterSpacing = 1.sp),
-            color = AmberDim
-        )
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 2.dp, vertical = 1.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "${humanSize(asset.sizeBytes)} · ${asset.sourceCount} 帧",
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 7.sp, letterSpacing = 0.8.sp),
+                color = AmberDim,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                "GLB",
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 7.sp, letterSpacing = 1.sp),
+                color = Cream.copy(alpha = 0.35f)
+            )
+        }
     }
 }
 
@@ -573,7 +627,7 @@ fun ProcessingPanel(job: JobUi, onCancel: () -> Unit, onRetry: () -> Unit) {
         } else {
             Text(
                 "${(job.progress * 100).toInt()}%",
-                style = MaterialTheme.typography.displayMedium,
+                style = MaterialTheme.typography.displayMedium.glossy(),
                 color = Amber
             )
             Spacer(Modifier.height(10.dp))
@@ -584,21 +638,11 @@ fun ProcessingPanel(job: JobUi, onCancel: () -> Unit, onRetry: () -> Unit) {
                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
             )
             Spacer(Modifier.height(14.dp))
-            // 分段进度条
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                val segments = 24
-                val filled = (job.progress * segments).toInt()
-                repeat(segments) { i ->
-                    Box(
-                        Modifier
-                            .weight(1f)
-                            .height(6.dp)
-                            .background(
-                                if (i < filled) Amber else Cream.copy(alpha = 0.12f)
-                            )
-                    )
-                }
-            }
+            SegmentBar(
+                filled = (job.progress * 24).toInt(),
+                total = 24,
+                height = 6.dp
+            )
         }
 
         Spacer(Modifier.weight(1f))
@@ -659,10 +703,15 @@ fun ImportPanel(
             ) {
                 items(items, key = { it.id }) { item ->
                     val index = selected.indexOf(item.id)
+                    val cellShape = ChamferShape(4.dp)
                     Box(
                         Modifier
                             .aspectRatio(1f)
-                            .clip(RoundedCornerShape(3.dp))
+                            .clip(cellShape)
+                            .then(
+                                if (index >= 0) Modifier.border(1.4.dp, Amber, cellShape)
+                                else Modifier.border(0.8.dp, Cream.copy(alpha = 0.10f), cellShape)
+                            )
                             .clickable { onToggle(item.id) }
                     ) {
                         AsyncImage(
@@ -671,14 +720,16 @@ fun ImportPanel(
                             contentScale = ContentScale.Crop,
                             modifier = Modifier.fillMaxSize()
                         )
+                        ScanlineOverlay(Modifier.fillMaxSize(), step = 4.dp, alpha = 0.12f)
                         if (index >= 0) {
-                            Box(Modifier.fillMaxSize().background(Amber.copy(alpha = 0.22f)))
+                            Box(Modifier.fillMaxSize().background(Amber.copy(alpha = 0.20f)))
                             Box(
                                 Modifier
                                     .align(Alignment.TopEnd)
                                     .padding(3.dp)
                                     .size(16.dp)
-                                    .background(Amber, RoundedCornerShape(2.dp)),
+                                    .clip(ChamferShape(2.dp))
+                                    .background(Amber),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(

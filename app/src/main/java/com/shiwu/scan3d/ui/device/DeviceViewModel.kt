@@ -191,6 +191,16 @@ class DeviceViewModel(app: Application) : AndroidViewModel(app) {
         updateSettings(s.copy(onboarded = true))
     }
 
+    /**
+     * 校验一个还没保存的 Key：只打一次任务列表，返回耗时或错误原因。
+     * 服务舱里「校验并写入」走这里，避免把写错的 Key 存进本机。
+     */
+    suspend fun verifyKey(candidate: String, global: Boolean): Result<Long> =
+        withContext(Dispatchers.IO) {
+            val base = if (global) "https://api.aholo.ai/global" else "https://api.aholo3d.cn"
+            runCatching { api.probe(base, candidate) }
+        }
+
     fun testConnection() {
         val settings = _state.value.settings
         // 本地引擎 + 出模服务时，链路测试应该打服务而不是云端网关

@@ -64,6 +64,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -78,7 +80,6 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
@@ -120,7 +121,6 @@ fun DeviceScreen(vm: DeviceViewModel) {
     val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
-    val uriHandler = LocalUriHandler.current
 
     var hasCamera by remember {
         mutableStateOf(
@@ -148,7 +148,8 @@ fun DeviceScreen(vm: DeviceViewModel) {
     val fold = remember { Animatable(0f) }
     var foldVisible by remember { mutableStateOf(false) }
 
-    var showKeyDialog by remember { mutableStateOf(false) }
+    var showServiceBay by remember { mutableStateOf(false) }
+    var bayAutoWeb by remember { mutableStateOf(false) }
     var showServiceDialog by remember { mutableStateOf(false) }
     var showGuide by remember { mutableStateOf(false) }
     var guideStep by remember { mutableIntStateOf(0) }
@@ -273,13 +274,11 @@ fun DeviceScreen(vm: DeviceViewModel) {
                 modifier = mod,
                 hudLeft = if (state.mode == DeviceMode.LIVE) "F2.8 ISO400 24MM" else "",
                 hudRight = "%03d/%02d".format(state.frames.size, state.maxFrames),
-                hudBottom = when (state.mode) {
-                    DeviceMode.LIVE -> if (state.frames.isEmpty()) "ALIGN OBJECT / TAP TO CAPTURE" else "TAP = FRAME  HOLD = SUBMIT"
-                    DeviceMode.CONFIG -> "PARAMETERS"
-                    DeviceMode.ARCHIVE -> "LOCAL ARCHIVE"
-                    DeviceMode.IMPORT -> "ALBUM INPUT"
-                    DeviceMode.PREVIEW -> "3D PREVIEW"
-                    DeviceMode.PROCESSING -> "PROCESSING"
+                // 面板模式不画底部 HUD：面板自己带标题，避免和内容撞在一起
+                hudBottom = if (state.mode == DeviceMode.LIVE) {
+                    if (state.frames.isEmpty()) "ALIGN OBJECT / TAP TO CAPTURE" else "TAP = FRAME  HOLD = SUBMIT"
+                } else {
+                    ""
                 },
                 recording = state.frames.isNotEmpty() && state.mode == DeviceMode.LIVE,
                 compact = compact,
@@ -350,10 +349,14 @@ fun DeviceScreen(vm: DeviceViewModel) {
                                 onCycleQuality = vm::cycleQuality,
                                 onToggleRegion = vm::toggleRegion,
                                 onToggleDemo = vm::toggleDemo,
-                                onEditKey = { showKeyDialog = true },
+                                onEditKey = {
+                                    bayAutoWeb = false
+                                    showServiceBay = true
+                                },
                                 onEditService = { showServiceDialog = true },
                                 onOpenKeySite = {
-                                    runCatching { uriHandler.openUri(API_KEY_URL) }
+                                    bayAutoWeb = true
+                                    showServiceBay = true
                                 },
                                 onOpenGuide = {
                                     guideStep = 0
@@ -534,19 +537,25 @@ fun DeviceScreen(vm: DeviceViewModel) {
                     vm.markOnboarded()
                     showGuide = false
                 },
-                onOpenKeySite = { runCatching { uriHandler.openUri(API_KEY_URL) } }
+                onOpenKeySite = {
+                    bayAutoWeb = true
+                    showServiceBay = true
+                }
             )
         }
     }
 
-    if (showKeyDialog) {
-        ApiKeyDialog(
-            initial = state.settings.apiKey,
-            onDismiss = { showKeyDialog = false },
+    if (showServiceBay) {
+        ServiceBaySheet(
+            initialKey = state.settings.apiKey,
+            globalRegion = state.settings.globalRegion,
+            autoWeb = bayAutoWeb,
+            onVerify = { candidate, global -> vm.verifyKey(candidate, global) },
             onSave = { key ->
-                vm.updateSettings(state.settings.copy(apiKey = key.trim()))
-                showKeyDialog = false
-            }
+                vm.updateSettings(state.settings.copy(apiKey = key))
+                vm.toast("密钥已装入")
+            },
+            onDismiss = { showServiceBay = false }
         )
     }
 
@@ -581,12 +590,17 @@ private fun SubDisplay(
         DeviceMode.PROCESSING -> "成像中，请稍候"
     }
 
-    Column(
+    Box(
         Modifier
             .fillMaxWidth()
-            // 外部框体阴影
-            .background(Color.Black.copy(alpha = 0.45f))
-            .padding(bottom = 2.dp)
+            .drawBehind {
+                drawRoundRect(
+                    color = Color.Black.copy(alpha = 0.42f),
+                    topLeft = Offset(0f, 1.5.dp.toPx()),
+                    size = Size(size.width, size.height - 1.5.dp.toPx()),
+                    cornerRadius = CornerRadius(3.dp.toPx())
+                )
+            }
             .clip(RoundedCornerShape(3.dp))
             // 金属边框渐变
             .background(
@@ -599,9 +613,10 @@ private fun SubDisplay(
                 )
             )
             .border(1.dp, BrassDark.copy(alpha = 0.6f), RoundedCornerShape(3.dp))
-            // 内部间距
-            .padding(horizontal = 10.dp, vertical = if (compact) 5.dp else 7.dp)
     ) {
+        Column(
+            Modifier.padding(horizontal = 10.dp, vertical = if (compact) 5.dp else 7.dp)
+        ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
                 "FRAMES",
@@ -653,6 +668,39 @@ private fun SubDisplay(
                 color = Cream.copy(alpha = 0.55f),
                 fontSize = if (compact) 8.sp else 12.sp,
                 maxLines = 1
+            )
+        }
+        }
+
+        // 四角暗角 + 细扫描线，和取景屏保持同一块玻璃的质感
+        Canvas(Modifier.matchParentSize()) {
+            var y = 0f
+            val step = 2.dp.toPx()
+            while (y < size.height) {
+                drawLine(
+                    color = Color.Black.copy(alpha = 0.13f),
+                    start = Offset(0f, y),
+                    end = Offset(size.width, y),
+                    strokeWidth = 0.8f
+                )
+                y += step
+            }
+            // 条形面板用径向渐变吃不出暗角，改成横纵两向叠加：四角最暗，边中点次之
+            drawRect(
+                Brush.horizontalGradient(
+                    0f to Color.Black.copy(alpha = 0.55f),
+                    0.14f to Color.Transparent,
+                    0.86f to Color.Transparent,
+                    1f to Color.Black.copy(alpha = 0.55f)
+                )
+            )
+            drawRect(
+                Brush.verticalGradient(
+                    0f to Color.Black.copy(alpha = 0.45f),
+                    0.38f to Color.Transparent,
+                    0.62f to Color.Transparent,
+                    1f to Color.Black.copy(alpha = 0.45f)
+                )
             )
         }
     }
@@ -1023,21 +1071,7 @@ private fun DrawScope.drawArchive(color: Color) {
     }
 }
 
-@Composable
-private fun ApiKeyDialog(initial: String, onDismiss: () -> Unit, onSave: (String) -> Unit) {
-    val uriHandler = LocalUriHandler.current
-    TextEntryDialog(
-        title = "API KEY",
-        hint = "在 lux3d.aholo3d.cn 控制台申请，仅存本机",
-        linkLabel = "去申请密钥 ↗",
-        onLink = { runCatching { uriHandler.openUri(API_KEY_URL) } },
-        initial = initial,
-        onDismiss = onDismiss,
-        onSave = onSave
-    )
-}
-
-/** 配置页里需要手填一项文本时的通用弹窗（密钥、出模服务地址）。 */
+/** 配置页里需要手填一项文本时的通用弹窗（出模服务地址）。 */
 @Composable
 private fun TextEntryDialog(
     title: String,

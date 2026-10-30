@@ -3,6 +3,8 @@ package com.shiwu.scan3d.ui.device
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -124,3 +126,52 @@ fun HazardStripe(modifier: Modifier = Modifier, height: Dp = 5.dp) {
         }
     }
 }
+
+/** 细分隔线：一根发丝线，两端各一个小刻线，像仪表上的分栏。 */
+@Composable
+fun HairlineRule(modifier: Modifier = Modifier, alpha: Float = 0.14f) {
+    Canvas(modifier.fillMaxWidth().height(3.5.dp).padding(horizontal = 8.dp)) {
+        val y = size.height / 2f
+        drawLine(Amber.copy(alpha = alpha), Offset(0f, y), Offset(size.width, y), 1f)
+        listOf(0f, size.width).forEach { x ->
+            drawLine(
+                Amber.copy(alpha = 0.42f),
+                Offset(x, y - 1.6.dp.toPx()),
+                Offset(x, y + 1.6.dp.toPx()),
+                1f
+            )
+        }
+    }
+}
+
+/** 面板上的小指示灯：亮起时带一圈余辉。参数名不叫 size，避免遮住 DrawScope.size。 */
+@Composable
+fun LedDot(on: Boolean, color: Color = Amber, diameter: Dp = 6.dp, modifier: Modifier = Modifier) {
+    Canvas(modifier.size(diameter)) {
+        val c = Offset(size.width / 2f, size.height / 2f)
+        val r = size.minDimension / 2f
+        if (on) {
+            drawCircle(color.copy(alpha = 0.22f), r * 2.3f, c)
+            drawCircle(color.copy(alpha = 0.45f), r * 1.5f, c)
+            drawCircle(color, r, c)
+        } else {
+            drawCircle(Color.Black.copy(alpha = 0.62f), r, c)
+            drawCircle(color.copy(alpha = 0.26f), r, c, style = Stroke(0.8.dp.toPx()))
+        }
+    }
+}
+
+/** 缩略图上的扫描线 + 一层薄琥珀镀膜，让照片看起来像终端里的读数。 */
+@Composable
+fun ScanlineOverlay(modifier: Modifier = Modifier, step: Dp = 4.dp, alpha: Float = 0.16f) {
+    Canvas(modifier) {
+        var y = 0f
+        val s = step.toPx()
+        while (y < size.height) {
+            drawLine(Color.Black.copy(alpha = alpha), Offset(0f, y), Offset(size.width, y), 1f)
+            y += s
+        }
+        drawRect(Amber.copy(alpha = 0.05f))
+    }
+}
+
