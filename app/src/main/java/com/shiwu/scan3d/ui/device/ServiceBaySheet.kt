@@ -18,8 +18,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -93,6 +95,9 @@ fun ServiceBaySheet(
             Modifier
                 .fillMaxSize()
                 .background(Color.Black.copy(alpha = 0.82f))
+                // 弹窗是边到边的，不补系统栏内边距的话标题和「完成」会被状态栏盖住
+                .statusBarsPadding()
+                .navigationBarsPadding()
                 .padding(14.dp),
             contentAlignment = Alignment.Center
         ) {
