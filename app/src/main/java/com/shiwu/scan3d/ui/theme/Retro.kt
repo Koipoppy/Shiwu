@@ -127,12 +127,16 @@ private val RetroShapes = Shapes(
     extraLarge = RoundedCornerShape(24.dp)
 )
 
-/** 保留调用点，但不再做反光/描边处理，只设颜色。 */
+/** 荧光粉余辉：文字边缘一圈同色柔光，不描边、不加重影。radius 单位是像素。 */
+fun TextStyle.glow(color: Color = Amber, radius: Float = 10f, alpha: Float = 0.5f): TextStyle =
+    copy(shadow = Shadow(color.copy(alpha = alpha), Offset.Zero, radius))
+
+/** 保留调用点：设颜色并带一圈柔光，不做反光/描边。 */
 fun TextStyle.glossy(
     base: Color = Amber,
     highlight: Color = Color(0xFFFFE9C2),
     shadowAlpha: Float = 0.55f
-): TextStyle = copy(color = base)
+): TextStyle = copy(color = base).glow(base, 9f, shadowAlpha * 0.8f)
 
 @Composable
 fun RetroTheme(content: @Composable () -> Unit) {

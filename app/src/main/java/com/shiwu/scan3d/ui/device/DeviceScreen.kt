@@ -15,6 +15,8 @@ import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -25,6 +27,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -36,6 +39,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -67,20 +71,27 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.shiwu.scan3d.BuildConfig
 import com.shiwu.scan3d.data.Gallery
 import com.shiwu.scan3d.data.GalleryItem
+import com.shiwu.scan3d.data.JobUi
 import com.shiwu.scan3d.ui.components.CameraPreview
 import com.shiwu.scan3d.ui.components.SubjectBox
-import com.shiwu.scan3d.ui.components.SubjectSegmenter
 import com.shiwu.scan3d.ui.theme.Amber
 import com.shiwu.scan3d.ui.theme.AmberDim
 import com.shiwu.scan3d.ui.theme.Brass
@@ -96,9 +107,11 @@ import com.shiwu.scan3d.ui.theme.glossy
 import com.shiwu.scan3d.ui.viewer.ModelViewer
 import com.shiwu.scan3d.util.shareModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import kotlin.math.roundToInt
 
 @Composable
 fun DeviceScreen(vm: DeviceViewModel) {
@@ -107,6 +120,7 @@ fun DeviceScreen(vm: DeviceViewModel) {
     val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
     val snackbar = remember { SnackbarHostState() }
+    val uriHandler = LocalUriHandler.current
 
     var hasCamera by remember {
         mutableStateOf(
@@ -128,13 +142,27 @@ fun DeviceScreen(vm: DeviceViewModel) {
     var shooting by remember { mutableStateOf(false) }
     val flash = remember { Animatable(0f) }
 
+    // 提交后处理页折叠进资产按钮的动画
+    var crtCenter by remember { mutableStateOf<Offset?>(null) }
+    var archiveCenter by remember { mutableStateOf<Offset?>(null) }
+    val fold = remember { Animatable(0f) }
+    var foldVisible by remember { mutableStateOf(false) }
+
     var showKeyDialog by remember { mutableStateOf(false) }
+    var showServiceDialog by remember { mutableStateOf(false) }
+    var showGuide by remember { mutableStateOf(false) }
+    var guideStep by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(state.settingsLoaded) {
+        if (state.settingsLoaded && !state.settings.onboarded) {
+            guideStep = 0
+            showGuide = true
+        }
+    }
 
     // 类别无关的主体框：中心点自动取种，用户点取景屏可以改指定物体。
-    val subjectSegmenter = remember { SubjectSegmenter(context) }
-    DisposableEffect(Unit) {
-        onDispose { subjectSegmenter.close() }
-    }
+    val subjectSegmenter = vm.segmenter
+
     var subjectBox by remember { mutableStateOf<SubjectBox?>(null) }
     var frameAspect by remember { mutableStateOf(4f / 3f) }
     var seedX by remember { mutableStateOf(0.5f) }
@@ -174,7 +202,11 @@ fun DeviceScreen(vm: DeviceViewModel) {
         }
     }
 
-    BackHandler(enabled = state.mode != DeviceMode.LIVE) { vm.toLive() }
+    BackHandler(enabled = state.mode != DeviceMode.LIVE && !showGuide) { vm.toLive() }
+    BackHandler(enabled = showGuide) {
+        vm.markOnboarded()
+        showGuide = false
+    }
 
     fun shoot() {
         val capture = imageCapture
@@ -213,6 +245,21 @@ fun DeviceScreen(vm: DeviceViewModel) {
         )
     }
 
+    fun submitWithFold() {
+        if (!vm.submit()) return
+        scope.launch {
+            flash.snapTo(1f)
+            flash.animateTo(0f, tween(240))
+        }
+        scope.launch {
+            foldVisible = true
+            fold.snapTo(0f)
+            delay(140)
+            fold.animateTo(1f, tween(560, easing = FastOutSlowInEasing))
+            foldVisible = false
+        }
+    }
+
     BoxWithConstraints(
         Modifier
             .fillMaxSize()
@@ -244,7 +291,7 @@ fun DeviceScreen(vm: DeviceViewModel) {
                             CameraPreview(
                                 modifier = Modifier.fillMaxSize(),
                                 segmenter = subjectSegmenter,
-                                detectionEnabled = state.mode == DeviceMode.LIVE,
+                                detectionEnabled = state.mode == DeviceMode.LIVE && BuildConfig.SUBJECT_ENABLED,
                                 onSubject = { subjectBox = it },
                                 onAspect = { frameAspect = it },
                                 onImageCaptureReady = { imageCapture = it },
@@ -295,11 +342,23 @@ fun DeviceScreen(vm: DeviceViewModel) {
                                     else -> state.probe.message
                                 },
                                 probeOk = state.probe.ok,
+                                serviceLabel = state.settings.localServiceUrl
+                                    .ifBlank { "OFF" }
+                                    .removePrefix("http://"),
+                                serviceOn = state.settings.localServiceUrl.isNotBlank(),
                                 onCycleEngine = vm::cycleEngine,
                                 onCycleQuality = vm::cycleQuality,
                                 onToggleRegion = vm::toggleRegion,
                                 onToggleDemo = vm::toggleDemo,
                                 onEditKey = { showKeyDialog = true },
+                                onEditService = { showServiceDialog = true },
+                                onOpenKeySite = {
+                                    runCatching { uriHandler.openUri(API_KEY_URL) }
+                                },
+                                onOpenGuide = {
+                                    guideStep = 0
+                                    showGuide = true
+                                },
                                 onTest = vm::testConnection,
                                 onOpenImport = vm::openImport,
                                 onClearFrames = vm::clearFrames
@@ -308,7 +367,11 @@ fun DeviceScreen(vm: DeviceViewModel) {
                         DeviceMode.ARCHIVE -> PanelSurface {
                             ArchivePanel(
                                 assets = state.assets,
-                                onOpen = { vm.openPreview(it.id) }
+                                jobs = state.jobs,
+                                onOpen = { vm.openPreview(it.id) },
+                                onCancelJob = { vm.cancelGeneration() },
+                                onRetryJob = { vm.retryJob(it) },
+                                onDiscardJob = { vm.discardJob(it) }
                             )
                         }
                         DeviceMode.IMPORT -> PanelSurface {
@@ -389,7 +452,8 @@ fun DeviceScreen(vm: DeviceViewModel) {
                     }
                 },
                 onShoot = { shoot() },
-                onSubmit = { vm.submit() },
+                onSubmit = { submitWithFold() },
+                onArchiveCenter = { archiveCenter = it },
                 onConfig = vm::openConfig,
                 onArchive = vm::openArchive
             )
@@ -405,10 +469,46 @@ fun DeviceScreen(vm: DeviceViewModel) {
             Spacer(Modifier.height(8.dp))
             subDisplay(landscape)
             Spacer(Modifier.height(10.dp))
-            viewfinder(Modifier.weight(1f).fillMaxWidth(), landscape)
+            viewfinder(
+                Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .onGloballyPositioned { c ->
+                        crtCenter = c.positionInRoot() + Offset(c.size.width / 2f, c.size.height / 2f)
+                    },
+                landscape
+            )
             Spacer(Modifier.height(10.dp))
             deck(false, landscape)
             Spacer(Modifier.height(14.dp))
+        }
+
+        if (foldVisible) {
+            val job = state.job
+            val start = crtCenter
+            val end = archiveCenter
+            if (job != null && start != null && end != null) {
+                val p = fold.value
+                val density = LocalDensity.current
+                val chipW = 180.dp
+                val chipH = 78.dp
+                val wPx = with(density) { chipW.toPx() }
+                val hPx = with(density) { chipH.toPx() }
+                val cx = start.x + (end.x - start.x) * p
+                val cy = start.y + (end.y - start.y) * p
+                FoldChip(
+                    job = job,
+                    modifier = Modifier
+                        .offset { IntOffset((cx - wPx / 2).roundToInt(), (cy - hPx / 2).roundToInt()) }
+                        .size(chipW, chipH)
+                        .graphicsLayer {
+                            val s = 1f - 0.88f * p
+                            scaleX = s
+                            scaleY = s
+                            alpha = (1f - p).coerceIn(0f, 1f)
+                        }
+                )
+            }
         }
 
         SnackbarHost(
@@ -418,6 +518,25 @@ fun DeviceScreen(vm: DeviceViewModel) {
                 .navigationBarsPadding()
                 .padding(bottom = 12.dp, start = 16.dp, end = 16.dp)
         )
+
+        if (showGuide) {
+            GuideOverlay(
+                step = guideStep,
+                onNext = {
+                    if (guideStep < GUIDE_STEP_COUNT - 1) {
+                        guideStep += 1
+                    } else {
+                        vm.markOnboarded()
+                        showGuide = false
+                    }
+                },
+                onSkip = {
+                    vm.markOnboarded()
+                    showGuide = false
+                },
+                onOpenKeySite = { runCatching { uriHandler.openUri(API_KEY_URL) } }
+            )
+        }
     }
 
     if (showKeyDialog) {
@@ -427,6 +546,21 @@ fun DeviceScreen(vm: DeviceViewModel) {
             onSave = { key ->
                 vm.updateSettings(state.settings.copy(apiKey = key.trim()))
                 showKeyDialog = false
+            }
+        )
+    }
+
+    if (showServiceDialog) {
+        TextEntryDialog(
+            title = "TRIPO SERVICE",
+            hint = "PC 上 serve_triposr.py 的地址。留空关闭，本地引擎回到机内重建。",
+            linkLabel = "例：192.168.1.7:8189（或 USB 调试时用 adb reverse 后填 127.0.0.1:8189）↗",
+            onLink = null,
+            initial = state.settings.localServiceUrl,
+            onDismiss = { showServiceDialog = false },
+            onSave = { url ->
+                vm.setLocalServiceUrl(url)
+                showServiceDialog = false
             }
         )
     }
@@ -450,9 +584,22 @@ private fun SubDisplay(
     Column(
         Modifier
             .fillMaxWidth()
+            // 外部框体阴影
+            .background(Color.Black.copy(alpha = 0.45f))
+            .padding(bottom = 2.dp)
             .clip(RoundedCornerShape(3.dp))
-            .background(Color(0xFF0B0D0A))
+            // 金属边框渐变
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        Color(0xFF1A1D16),
+                        Color(0xFF0B0D0A),
+                        Color(0xFF08090A)
+                    )
+                )
+            )
             .border(1.dp, BrassDark.copy(alpha = 0.6f), RoundedCornerShape(3.dp))
+            // 内部间距
             .padding(horizontal = 10.dp, vertical = if (compact) 5.dp else 7.dp)
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -557,12 +704,62 @@ private fun CameraBlockedPanel(onGrant: () -> Unit) {
 }
 
 @Composable
+private fun FoldChip(job: JobUi, modifier: Modifier = Modifier) {
+    Column(
+        modifier
+            .clip(RoundedCornerShape(4.dp))
+            .background(Deck)
+            .border(1.dp, Brass.copy(alpha = 0.7f), RoundedCornerShape(4.dp))
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.Center
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                "成像中",
+                style = MaterialTheme.typography.labelSmall.glossy(),
+                color = Amber,
+                fontSize = 9.sp
+            )
+            Spacer(Modifier.weight(1f))
+            Text(
+                "${(job.progress * 100).toInt()}%",
+                style = MaterialTheme.typography.labelSmall,
+                color = Amber,
+                fontSize = 9.sp
+            )
+        }
+        Text(
+            job.name,
+            style = MaterialTheme.typography.labelSmall,
+            color = Cream.copy(alpha = 0.8f),
+            fontSize = 8.sp,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+        )
+        Spacer(Modifier.height(4.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+            val segments = 14
+            val filled = (job.progress * segments).toInt()
+            repeat(segments) { i ->
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .height(3.dp)
+                        .background(if (i < filled) Amber else Cream.copy(alpha = 0.15f))
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun ControlDeck(
     state: DeviceState,
     vertical: Boolean,
     compact: Boolean,
     torchOn: Boolean,
     onToggleTorch: () -> Unit,
+    onArchiveCenter: (Offset) -> Unit,
     onShoot: () -> Unit,
     onSubmit: () -> Unit,
     onConfig: () -> Unit,
@@ -597,7 +794,8 @@ private fun ControlDeck(
             sub = "ARCHIVE",
             active = state.mode == DeviceMode.ARCHIVE,
             size = buttonSize,
-            onClick = onArchive
+            onClick = onArchive,
+            onPositioned = onArchiveCenter
         ) { color -> drawArchive(color) }
     }
     val knob: @Composable () -> Unit = {
@@ -663,6 +861,7 @@ private fun HardwareButton(
     size: Dp,
     enabled: Boolean = true,
     onClick: () -> Unit,
+    onPositioned: ((Offset) -> Unit)? = null,
     glyph: DrawScope.(Color) -> Unit
 ) {
     val glyphColor = when {
@@ -670,6 +869,19 @@ private fun HardwareButton(
         enabled -> Cream.copy(alpha = 0.62f)
         else -> Cream.copy(alpha = 0.25f)
     }
+    val haptics = LocalHapticFeedback.current
+    val interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    
+    val pressAnim by animateFloatAsState(
+        targetValue = if (pressed) 1f else 0f,
+        animationSpec = androidx.compose.animation.core.spring(
+            dampingRatio = 0.6f,
+            stiffness = androidx.compose.animation.core.Spring.StiffnessHigh
+        ),
+        label = "buttonPress"
+    )
+    
     Column(
         Modifier.width(size),
         horizontalAlignment = Alignment.CenterHorizontally
@@ -677,18 +889,68 @@ private fun HardwareButton(
         Box(
             Modifier
                 .size(size)
-                .clip(CircleShape)
-                .background(
-                    Brush.verticalGradient(
-                        listOf(Color(0xFF3B3428), Color(0xFF221D16))
+                .onGloballyPositioned { c ->
+                    onPositioned?.invoke(
+                        c.positionInRoot() + Offset(c.size.width / 2f, c.size.height / 2f)
                     )
-                )
-                .border(1.dp, if (active) Amber else DeckEdge, CircleShape)
-                .clickable(enabled = enabled, onClick = onClick),
-            contentAlignment = Alignment.Center
+                }
+                .graphicsLayer {
+                    translationY = pressAnim * 2.dp.toPx()
+                    scaleX = 1f - pressAnim * 0.03f
+                    scaleY = 1f - pressAnim * 0.03f
+                }
         ) {
-            Canvas(Modifier.size(size * 0.4f)) {
-                glyph(glyphColor)
+            // 底部阴影
+            Canvas(Modifier.size(size).offset(y = 3.dp)) {
+                // 参数 size: Dp 会遮住 DrawScope.size，这里必须显式写 this.size
+                drawCircle(Color.Black.copy(alpha = 0.55f), this.size.minDimension / 2f)
+            }
+            
+            // 按钮主体
+            Box(
+                Modifier
+                    .size(size)
+                    .clip(CircleShape)
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                Color(0xFF48433A),  // 顶部高光
+                                Color(0xFF3B3428),
+                                Color(0xFF2A251D),
+                                Color(0xFF1C1812)   // 底部深色
+                            )
+                        )
+                    )
+                    .border(
+                        1.5.dp,
+                        if (active) Amber.copy(alpha = 0.85f) else Color(0xFF524A3E),
+                        CircleShape
+                    )
+                    .clickable(
+                        interactionSource = interactionSource,
+                        indication = null,
+                        enabled = enabled,
+                        onClick = {
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            onClick()
+                        }
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                // 内部高光环
+                Canvas(Modifier.size(size * 0.88f)) {
+                    val s = this.size
+                    drawCircle(
+                        color = Cream.copy(alpha = 0.08f),
+                        radius = s.minDimension / 2f * 0.9f,
+                        center = Offset(s.width / 2f, s.height / 2f * 0.9f),
+                        style = Stroke(1.5.dp.toPx())
+                    )
+                }
+                
+                Canvas(Modifier.size(size * 0.4f)) {
+                    glyph(glyphColor)
+                }
             }
         }
         Spacer(Modifier.height(4.dp))
@@ -763,6 +1025,29 @@ private fun DrawScope.drawArchive(color: Color) {
 
 @Composable
 private fun ApiKeyDialog(initial: String, onDismiss: () -> Unit, onSave: (String) -> Unit) {
+    val uriHandler = LocalUriHandler.current
+    TextEntryDialog(
+        title = "API KEY",
+        hint = "在 lux3d.aholo3d.cn 控制台申请，仅存本机",
+        linkLabel = "去申请密钥 ↗",
+        onLink = { runCatching { uriHandler.openUri(API_KEY_URL) } },
+        initial = initial,
+        onDismiss = onDismiss,
+        onSave = onSave
+    )
+}
+
+/** 配置页里需要手填一项文本时的通用弹窗（密钥、出模服务地址）。 */
+@Composable
+private fun TextEntryDialog(
+    title: String,
+    hint: String,
+    linkLabel: String?,
+    onLink: (() -> Unit)?,
+    initial: String,
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit
+) {
     var value by remember { mutableStateOf(initial) }
     Dialog(onDismissRequest = onDismiss) {
         Column(
@@ -773,17 +1058,27 @@ private fun ApiKeyDialog(initial: String, onDismiss: () -> Unit, onSave: (String
                 .padding(14.dp)
         ) {
             Text(
-                "API KEY",
+                title,
                 style = MaterialTheme.typography.titleSmall.glossy(),
                 color = Amber
             )
             Spacer(Modifier.height(4.dp))
             Text(
-                "在 lux3d.aholo3d.cn 控制台申请，仅存本机",
+                hint,
                 style = MaterialTheme.typography.labelSmall,
                 color = Cream.copy(alpha = 0.5f),
                 fontSize = 8.sp
             )
+            if (linkLabel != null && onLink != null) {
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    linkLabel,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Amber,
+                    fontSize = 9.sp,
+                    modifier = Modifier.clickable { onLink() }
+                )
+            }
             Spacer(Modifier.height(10.dp))
             OutlinedTextField(
                 value = value,

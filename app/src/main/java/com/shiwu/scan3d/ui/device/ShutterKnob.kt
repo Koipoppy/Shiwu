@@ -84,37 +84,54 @@ fun ShutterKnob(
             val r = size.minDimension / 2f
             val c = Offset(size.width / 2f, size.height / 2f)
 
-            // 外圈阴影
-            drawCircle(Color.Black.copy(alpha = 0.55f), r, c + Offset(0f, 3.dp.toPx()))
-            // 滚花外环
+            // 底部多层阴影（更深邃）
+            drawCircle(Color.Black.copy(alpha = 0.65f), r * 1.02f, c + Offset(0f, 4.dp.toPx()))
+            drawCircle(Color.Black.copy(alpha = 0.35f), r * 1.05f, c + Offset(0f, 6.dp.toPx()))
+            
+            // 滚花外环（加强金属渐变）
             drawCircle(
                 brush = Brush.verticalGradient(
-                    listOf(BrassLight.copy(alpha = ready), Brass.copy(alpha = ready), BrassDark.copy(alpha = ready)),
+                    listOf(
+                        BrassLight.copy(alpha = ready * 0.95f),
+                        Brass.copy(alpha = ready * 0.85f),
+                        BrassDark.copy(alpha = ready * 0.75f),
+                        Color(0xFF6A4B25).copy(alpha = ready * 0.8f)
+                    ),
                     startY = 0f,
                     endY = size.height
                 ),
                 radius = r,
                 center = c
             )
-            val teeth = 36
+            
+            // 外环高光边缘
+            drawCircle(
+                color = BrassLight.copy(alpha = 0.45f * ready),
+                radius = r,
+                center = c + Offset(0f, -1.dp.toPx()),
+                style = Stroke(1.2.dp.toPx())
+            )
+            
+            // 更密集的滚花齿纹（银翼杀手风格）
+            val teeth = 48
             for (i in 0 until teeth) {
                 val a = Math.toRadians(i * (360.0 / teeth))
                 val rOut = r * 0.995f
-                val rIn = r * 0.90f
+                val rIn = r * 0.88f
                 drawLine(
-                    color = BrassDark.copy(alpha = 0.55f * ready),
+                    color = BrassDark.copy(alpha = 0.65f * ready),
                     start = Offset(c.x + (rIn * cos(a)).toFloat(), c.y + (rIn * sin(a)).toFloat()),
                     end = Offset(c.x + (rOut * cos(a)).toFloat(), c.y + (rOut * sin(a)).toFloat()),
-                    strokeWidth = 1.4.dp.toPx(),
+                    strokeWidth = 1.6.dp.toPx(),
                     cap = StrokeCap.Round
                 )
             }
 
-            // 拍照进度环（帧数）
-            val ringR = r * 0.80f
-            val stroke = 4.dp.toPx()
+            // 拍照进度环（更粗、更醒目）
+            val ringR = r * 0.78f
+            val stroke = 5.dp.toPx()
             drawArc(
-                color = Color.Black.copy(alpha = 0.35f),
+                color = Color.Black.copy(alpha = 0.45f),
                 startAngle = -90f,
                 sweepAngle = 360f,
                 useCenter = false,
@@ -126,7 +143,10 @@ fun ShutterKnob(
                 val sweep = 360f * (frames.toFloat() / maxFrames).coerceIn(0f, 1f)
                 if (sweep > 0f) {
                     drawArc(
-                        color = Amber,
+                        brush = Brush.sweepGradient(
+                            listOf(Amber, Amber.copy(alpha = 0.85f), Amber),
+                            center = c
+                        ),
                         startAngle = -90f,
                         sweepAngle = sweep,
                         useCenter = false,
@@ -137,48 +157,76 @@ fun ShutterKnob(
                 }
             }
 
-            // 中央旋帽
-            val capR = r * 0.66f
+            // 中央旋帽（更强的金属深度）
+            val capR = r * 0.64f
             drawCircle(
                 brush = Brush.radialGradient(
-                    listOf(Color(0xFF35302A), Color(0xFF141210)),
-                    center = c + Offset(-capR * 0.25f, -capR * 0.3f),
-                    radius = capR * 1.4f
+                    listOf(
+                        Color(0xFF3D3830),
+                        Color(0xFF2A251E),
+                        Color(0xFF14110D)
+                    ),
+                    center = c + Offset(-capR * 0.2f, -capR * 0.25f),
+                    radius = capR * 1.5f
                 ),
                 radius = capR,
                 center = c
             )
+            
+            // 旋帽边缘高光
             drawCircle(
-                color = Brass.copy(alpha = 0.65f * ready),
+                color = Brass.copy(alpha = 0.75f * ready),
                 radius = capR,
                 center = c,
+                style = Stroke(1.5.dp.toPx())
+            )
+            
+            // 内部凹痕
+            drawCircle(
+                color = Color.Black.copy(alpha = 0.35f),
+                radius = capR * 0.92f,
+                center = c + Offset(0.5.dp.toPx(), 0.8.dp.toPx()),
                 style = Stroke(1.2.dp.toPx())
             )
 
-            // 指针（随角度旋转）
+            // 指针（随角度旋转，加辉光）
             val rad = Math.toRadians(angle.toDouble() - 90.0)
-            val tipR = capR * 0.72f
-            val startR = capR * 0.24f
+            val tipR = capR * 0.70f
+            val startR = capR * 0.22f
+            
+            // 指针辉光
+            drawLine(
+                color = Amber.copy(alpha = 0.3f),
+                start = Offset(c.x + (startR * cos(rad)).toFloat(), c.y + (startR * sin(rad)).toFloat()),
+                end = Offset(c.x + (tipR * cos(rad)).toFloat(), c.y + (tipR * sin(rad)).toFloat()),
+                strokeWidth = 7.dp.toPx(),
+                cap = StrokeCap.Round
+            )
+            // 指针主体
             drawLine(
                 color = Amber,
                 start = Offset(c.x + (startR * cos(rad)).toFloat(), c.y + (startR * sin(rad)).toFloat()),
                 end = Offset(c.x + (tipR * cos(rad)).toFloat(), c.y + (tipR * sin(rad)).toFloat()),
-                strokeWidth = 4.dp.toPx(),
+                strokeWidth = 4.5.dp.toPx(),
                 cap = StrokeCap.Round
             )
-            drawCircle(Amber.copy(alpha = 0.9f), 2.5.dp.toPx(), c + Offset(
-                (startR * cos(rad)).toFloat(),
-                (startR * sin(rad)).toFloat()
-            ))
+            drawCircle(
+                Amber.copy(alpha = 0.95f), 
+                3.dp.toPx(), 
+                c + Offset(
+                    (startR * cos(rad)).toFloat(),
+                    (startR * sin(rad)).toFloat()
+                )
+            )
 
-            // 中心轴钉
-            drawCircle(Ink, r * 0.10f, c)
-            drawCircle(BrassDark, r * 0.10f, c, style = Stroke(1.dp.toPx()))
+            // 中心轴钉（更强的金属质感）
+            drawCircle(Color(0xFF0A0808), r * 0.12f, c)
+            drawCircle(BrassDark.copy(alpha = 0.85f), r * 0.12f, c, style = Stroke(1.4.dp.toPx()))
             drawLine(
-                color = Cream.copy(alpha = 0.5f),
-                start = c + Offset(-r * 0.055f, 0f),
-                end = c + Offset(r * 0.055f, 0f),
-                strokeWidth = 1.dp.toPx()
+                color = Cream.copy(alpha = 0.6f),
+                start = c + Offset(-r * 0.065f, 0f),
+                end = c + Offset(r * 0.065f, 0f),
+                strokeWidth = 1.2.dp.toPx()
             )
         }
     }

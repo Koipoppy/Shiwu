@@ -4,17 +4,54 @@
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
+
+    <!-- 取景角标：黄铜金 -->
     <path
-        android:fillAlpha="0.10"
-        android:fillColor="#1B6B4F"
-        android:pathData="M54,26 L80,41 L80,70 L54,85 L28,70 L28,41 Z" />
+        android:fillColor="#00000000"
+        android:strokeColor="#FFB454"
+        android:strokeWidth="3.2"
+        android:strokeLineCap="round"
+        android:pathData="M27,41 L27,27 L41,27" />
     <path
-        android:fillColor="#1B6B4F"
-        android:pathData="M54,32 L74,43.5 L54,55 L34,43.5 Z" />
+        android:fillColor="#00000000"
+        android:strokeColor="#FFB454"
+        android:strokeWidth="3.2"
+        android:strokeLineCap="round"
+        android:pathData="M67,27 L81,27 L81,41" />
     <path
-        android:fillColor="#2A8262"
-        android:pathData="M32,46.5 L52,58 L52,79 L32,67.5 Z" />
+        android:fillColor="#00000000"
+        android:strokeColor="#FFB454"
+        android:strokeWidth="3.2"
+        android:strokeLineCap="round"
+        android:pathData="M27,67 L27,81 L41,81" />
     <path
-        android:fillColor="#12513B"
-        android:pathData="M76,46.5 L56,58 L56,79 L76,67.5 Z" />
+        android:fillColor="#00000000"
+        android:strokeColor="#FFB454"
+        android:strokeWidth="3.2"
+        android:strokeLineCap="round"
+        android:pathData="M67,81 L81,81 L81,67" />
+
+    <!-- 金色主体立方体 -->
+    <path
+        android:fillColor="#FFC66B"
+        android:pathData="M54,35 L73,45.5 L54,56 L35,45.5 Z" />
+    <path
+        android:fillColor="#C08C3A"
+        android:pathData="M35,45.5 L54,56 L54,77 L35,66.5 Z" />
+    <path
+        android:fillColor="#6E4B1B"
+        android:pathData="M73,45.5 L54,56 L54,77 L73,66.5 Z" />
+
+    <!-- 深色棱线，保证浅色壁纸上也有边界 -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#1A1309"
+        android:strokeWidth="1.5"
+        android:strokeLineJoin="round"
+        android:pathData="M54,35 L73,45.5 L73,66.5 L54,77 L35,66.5 L35,45.5 Z" />
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#1A1309"
+        android:strokeWidth="1.2"
+        android:pathData="M54,56 L54,77 M54,56 L73,45.5 M54,56 L35,45.5" />
 </vector>

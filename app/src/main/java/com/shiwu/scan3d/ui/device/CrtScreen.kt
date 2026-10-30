@@ -73,13 +73,25 @@ fun CrtScreen(
     Box(
         modifier
             .clip(RoundedCornerShape(if (compact) 20.dp else 26.dp))
-            .background(GlassEdge)
+            .background(
+                Brush.verticalGradient(
+                    listOf(
+                        Color(0xFF24211C),  // 黄铜顶部高光
+                        Color(0xFF1D211C),
+                        Color(0xFF12140F)   // 底部阴影
+                    )
+                )
+            )
             .padding(if (compact) 7.dp else 9.dp)
     ) {
         Box(
             Modifier
                 .fillMaxSize()
                 .clip(RoundedCornerShape(17.dp))
+                // 内嵌阴影
+                .background(Color.Black.copy(alpha = 0.55f))
+                .padding(1.5.dp)
+                .clip(RoundedCornerShape(16.dp))
                 .background(Glass)
         ) {
             // 取景画面：保持设备朝向，不参与旋转
@@ -113,43 +125,82 @@ fun CrtScreen(
                 }
             }
 
-            // 镀膜 + 扫描线 + 下扫亮带 + 暗角
+            // 镀膜 + 扫描线 + 下扫亮带 + 暗角 + 玻璃反光
             Canvas(Modifier.fillMaxSize()) {
+                // 基础琥珀镀膜
                 drawRect(Amber.copy(alpha = 0.055f))
+                
+                // 更密集的扫描线（银翼杀手风格）
                 var y = 0f
-                val step = 3.2.dp.toPx()
+                val step = 2.dp.toPx()
                 while (y < size.height) {
                     drawLine(
-                        color = Color.Black.copy(alpha = 0.16f),
+                        color = Color.Black.copy(alpha = 0.18f),
                         start = Offset(0f, y),
                         end = Offset(size.width, y),
-                        strokeWidth = 1f
+                        strokeWidth = 0.8f
                     )
                     y += step
                 }
+                
+                // 下扫亮带（更强烈）
                 val bandH = size.height * 0.22f
                 val bandY = sweep * (size.height + bandH) - bandH
                 drawRect(
                     brush = Brush.verticalGradient(
-                        listOf(Color.Transparent, Amber.copy(alpha = 0.05f), Color.Transparent),
+                        listOf(
+                            Color.Transparent,
+                            Amber.copy(alpha = 0.08f),
+                            Amber.copy(alpha = 0.04f),
+                            Color.Transparent
+                        ),
                         startY = bandY,
                         endY = bandY + bandH
                     ),
                     topLeft = Offset(0f, bandY),
                     size = Size(size.width, bandH)
                 )
+                
+                // 多层暗角（更柔和的过渡）
                 drawRect(
                     brush = Brush.radialGradient(
-                        colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.55f)),
+                        colors = listOf(
+                            Color.Transparent,
+                            Color.Black.copy(alpha = 0.20f),
+                            Color.Black.copy(alpha = 0.45f),
+                            Color.Black.copy(alpha = 0.65f)
+                        ),
                         center = Offset(size.width / 2f, size.height / 2f),
-                        radius = size.maxDimension * 0.72f
+                        radius = size.maxDimension * 0.85f
                     )
                 )
-                drawLine(
-                    color = Cream.copy(alpha = 0.035f),
-                    start = Offset(0f, size.height * 0.18f),
-                    end = Offset(size.width, size.height * 0.02f),
-                    strokeWidth = size.height * 0.16f
+                
+                // 玻璃反光（左上角高光）
+                drawRect(
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            Cream.copy(alpha = 0.055f),
+                            Color.Transparent
+                        ),
+                        start = Offset(0f, 0f),
+                        end = Offset(size.width * 0.5f, size.height * 0.4f)
+                    ),
+                    topLeft = Offset(0f, 0f),
+                    size = Size(size.width * 0.5f, size.height * 0.4f)
+                )
+                
+                // 右下角微弱反光
+                drawRect(
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            Cream.copy(alpha = 0.025f)
+                        ),
+                        start = Offset(size.width * 0.6f, size.height * 0.7f),
+                        end = Offset(size.width, size.height)
+                    ),
+                    topLeft = Offset(size.width * 0.6f, size.height * 0.7f),
+                    size = Size(size.width * 0.4f, size.height * 0.3f)
                 )
             }
 
