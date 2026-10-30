@@ -888,9 +888,13 @@ private fun ControlDeck(
             archive()
         }
     } else {
+        // 固定间距 + 居中：原来 SpaceBetween 会把四枚键撑到两端，键间空隙太大
         Row(
             Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(
+                space = if (compact) 14.dp else 20.dp,
+                alignment = Alignment.CenterHorizontally
+            ),
             verticalAlignment = Alignment.CenterVertically
         ) {
             lamp()
